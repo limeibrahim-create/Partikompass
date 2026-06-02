@@ -1,4 +1,181 @@
 {
-  "last_updated": null,
-  "parties": {}
+  "last_updated": "2026-06-03 00:22",
+  "parties": {
+    "M": {
+      "Kärnkraft": {
+        "overall": "for",
+        "stance": "Moderaterna stödjer kärnkraft starkt och vill återuppbygga det svenska kraftsystemet genom ny kärnkraft i södra Sverige, med statligt stöd för att minska risker och säkerställa låga elpriser.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "mixed",
+        "stance": "Moderaterna prioriterar kärnkraft och vattenkraft för stabil energiförsörjning, medan grön energi som sol och vind underordnas denna strategi.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "for",
+        "stance": "Moderaterna stödjer klimatmål och utsläppskrav, men prioriterar kostnadseffektiva lösningar och kärnkraft framför höjda bensinkostnader för familjer.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "against",
+        "stance": "Moderaterna motsätter sig höjda bränslepriser som klimatåtgärd och föredrar elektrifiering och industriomställning framför att belasta familjer ekonomiskt.",
+        "history": []
+      }
+    },
+    "S": {
+      "Kärnkraft": {
+        "overall": "for",
+        "stance": "Socialdemokraterna stödjer kärnkraft som en viktig del av ett stabilt och fossilfritt energisystem och förespråkar att bygga ut kärnkraften.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "for",
+        "stance": "Socialdemokraterna stödjer grön energi och vill öka utbyggnaden av sol-, vind- och vattenkraft som del av ett fossilfritt energisystem.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "for",
+        "stance": "Socialdemokraterna stödjer klimatmål genom fossilfri elproduktion och energiomställning, men prioriterar även prisstabilitet och arbetstillfällen.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "mixed",
+        "stance": "Socialdemokraterna fokuserar på låga elpriser och fossilfri energi, men saknar specifik ståndpunkt om reduktionsplikt för bränslen.",
+        "history": []
+      }
+    },
+    "V": {
+      "Kärnkraft": {
+        "overall": "mixed",
+        "stance": "Otillräcklig information för att bestämma Vänsterpartiets ståndpunkt om kärnkraft baserat på tillhandahållna texter.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "mixed",
+        "stance": "Kunde inte analyseras - tillräcklig källmaterial om Vänsterpartiets ståndpunkt till grön energi saknas i de tillhandahållna texterna.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "mixed",
+        "stance": "Otillräcklig information för analys. De tillhandahållna källorna innehåller ingen relevant text om Vänsterpartiets klimatmål eller utsläppskrav.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "mixed",
+        "stance": "Ingen tillgänglig information om Vänsterpartiets ståndpunkt angående bränslepriser och reduktionsplikt i de tillhandahållna texterna.",
+        "history": []
+      }
+    },
+    "SD": {
+      "Kärnkraft": {
+        "overall": "mixed",
+        "stance": "Sverigedemokraterna nämner kärnkraft inte explicit på sin hemsida. Energifrågor behandlas endast via bilbränsle och drivmedelsskatter, inte kärnkraft specifikt.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "mixed",
+        "stance": "Sverigedemokraterna fokuserar på billigare bränsle och låg reduktionsplikt snarare än på grön energiutbyggnad; ingen tydlig miljöpolitisk ställning framkommer.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "against",
+        "stance": "Sverigedemokraterna motsätter sig höga klimatkrav och drivmedelsskatter, argumenterar för låg reduktionsplikt och prioriterar ekonomisk belastning framför klimatmål.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "against",
+        "stance": "Sverigedemokraterna motsätter sig höga drivmedelsskatter och vill att reduktionsplikten ska hållas på låg nivå, då de anser detta slår hårt mot låginkomsttagare utan klimatnytta.",
+        "history": []
+      }
+    },
+    "MP": {
+      "Kärnkraft": {
+        "overall": "against",
+        "stance": "Miljöpartiet motsätter sig kärnkraft och förespråkar istället andra klimatlösningar, enligt partiledare Amanda Linds kritik av regeringens klimatpolitik.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "mixed",
+        "stance": "Miljöpartiet saknar tillgänglig information om grön energi på sin hemsida, men visar engagemang för klimatpolitik genom kritik av otillräckliga åtgärder.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "for",
+        "stance": "Miljöpartiet stödjer ambitiösa klimatmål och kritiserar regeringen för otillräcklig klimatpolitik, kallande den 'bensinpopulism'.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "mixed",
+        "stance": "Miljöpartiet kritiserar regeringens klimatpolitik som otillräcklig, men tillgänglig information om specifik ståndpunkt till bränslepriser och reduktionsplikt är begränsad.",
+        "history": []
+      }
+    },
+    "C": {
+      "Kärnkraft": {
+        "overall": "mixed",
+        "stance": "Centerpartiet har ingen tydlig ståndpunkt om kärnkraft i de tillhandahållna texterna.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "mixed",
+        "stance": "Centerpartiet har en oklar eller delad ståndpunkt om grön energi baserat på tillgängligt material.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "mixed",
+        "stance": "Centerpartiet framgår inte tydligt i källorna, men partiet har lämnat reservationer på vissa klimatrelaterade förslag tillsammans med S, V och MP.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "mixed",
+        "stance": "Centerpartiet har ingen tydlig ställning i tillgängliga källor om bränslepriser och reduktionsplikt.",
+        "history": []
+      }
+    },
+    "KD": {
+      "Kärnkraft": {
+        "overall": "mixed",
+        "stance": "Kristdemokraternas ståndpunkt om kärnkraft framgår inte av tillgängliga källor.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "mixed",
+        "stance": "Kristdemokraterna saknar tydlig positionering kring grön energi i tillgängliga källor. Partiet fokuserar på andra prioriteringar.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "mixed",
+        "stance": "Kristdemokraterna stöder klimatmål men specifik ståndpunkt framgår inte tydligt från tillgängliga källor.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "mixed",
+        "stance": "Kristdemokraterna har ingen tydlig publicerad ståndpunkt om bränslepriser och reduktionsplikt i tillgängliga källor.",
+        "history": []
+      }
+    },
+    "L": {
+      "Kärnkraft": {
+        "overall": "mixed",
+        "stance": "Liberalerna listar kärnkraft som politiskt område men presenterar ingen explicit ståndpunkt i tillgängliga källor.",
+        "history": []
+      },
+      "Grön energi (Sol, Vind, Vatten)": {
+        "overall": "for",
+        "stance": "Liberalerna stödjer grön energi genom att ha solenergi, vattenkraft och vindkraft listade som prioriterade politikområden på sin hemsida.",
+        "history": []
+      },
+      "Klimatmål och utsläppskrav": {
+        "overall": "mixed",
+        "stance": "Liberalerna listar klimatet som politiskt område men saknar tydlig ståndpunkt i tillgängliga källor.",
+        "history": []
+      },
+      "Bränslepriser och reduktionsplikt": {
+        "overall": "mixed",
+        "stance": "Liberalerna har inte en tydlig eller explicit ståndpunkt om bränslepriser och reduktionsplikt i tillgängliga källor.",
+        "history": []
+      }
+    }
+  }
 }
