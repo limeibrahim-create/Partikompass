@@ -1313,12 +1313,29 @@ const mockData = {
 };
 
 async function fetchPartyStance(partyKey, sub) {
-  await new Promise(r => setTimeout(r, 600 + Math.random()*400));
-  const pd = mockData[partyKey];
+  if (!window._partiesData) {
+    try {
+      const response = await fetch('data/parties.json');
+      window._partiesData = await response.json();
+    } catch(e) {
+      console.error('Kunde inte ladda parties.json:', e);
+      window._partiesData = { parties: {} };
+    }
+  }
+  const pd = window._partiesData.parties[partyKey];
   if (!pd || !pd[sub]) {
     return { party:partyKey, topic:sub, overall:'unknown',
-      stance:`Testdata saknas för "${sub}". Fler partier aktiveras med API-nyckel.`, votes:[] };
+      stance:`Data saknas för "${sub}".`, stanceMap:{} };
   }
+  return {
+    party: partyKey,
+    topic: sub,
+    overall: pd[sub].overall || 'unknown',
+    stance: pd[sub].stance || '',
+    stanceMap: pd[sub].stanceMap || {},
+    source: pd[sub].source || null
+  };
+}
   return { party:partyKey, topic:sub, ...pd[sub] };
 }
 </script>
