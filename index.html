@@ -1322,11 +1322,27 @@ async function fetchPartyStance(partyKey, sub) {
       window._partiesData = { parties: {} };
     }
   }
-  const pd = window._partiesData.parties[partyKey];
-  if (!pd || !pd[sub]) {
+
+  // Hämta aktuell ståndpunkt från JSON (uppdateras varje vecka)
+  const live = window._partiesData.parties?.[partyKey]?.[sub];
+
+  // Hämta historisk röstdata från hårdkodad mockData
+  const historical = mockData?.[partyKey]?.[sub];
+
+  if (!live && !historical) {
     return { party:partyKey, topic:sub, overall:'unknown',
       stance:`Data saknas för "${sub}".`, stanceMap:{} };
   }
+
+  return {
+    party: partyKey,
+    topic: sub,
+    overall: live?.overall || historical?.overall || 'unknown',
+    stance: live?.stance || historical?.stance || '',
+    stanceMap: historical?.stanceMap || {},
+    source: historical?.source || null
+  };
+}
   return {
     party: partyKey,
     topic: sub,
