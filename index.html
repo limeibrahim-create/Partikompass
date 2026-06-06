@@ -204,53 +204,52 @@
   .footer-disclaimer { line-height:1.7; }
   .footer-sources { display:flex; gap:16px; flex-wrap:wrap; margin-top:4px; }
   .footer-sources a { color:var(--accent2); text-decoration:underline; text-underline-offset:2px; }
-  /* ─── SEARCHBAR ─────────────────────────────────────────────────────────── */
-  .search-area {
-    margin-bottom: 24px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border);
+  /* ─── LOADING OVERLAY ───────────────────────────────────────────────────── */
+  .pk-loading-overlay {
+    position:fixed; inset:0; background:var(--bg); z-index:9999;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    transition:opacity .4s ease;
   }
-  .search-area-label { font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
-  .search-input-row { display:flex; gap:7px; }
-  .search-input {
-    flex:1; padding:9px 13px; background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; font-family:'DM Sans',sans-serif; font-size:.85rem; color:var(--text);
+  .pk-loading-overlay.fade-out { opacity:0; pointer-events:none; }
+  .pk-loading-overlay.hidden { display:none; }
+  .pk-loading-spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+  .pk-loading-text { font-size:.82rem; color:var(--muted); }
+  .pk-loading-text strong { color:var(--text); }
+
+  /* ─── SEARCHBAR ──────────────────────────────────────────────────────────── */
+  .search-bar-wrap {
+    margin-bottom:20px; padding-bottom:18px; border-bottom:1px solid var(--border);
+  }
+  .search-bar-label { font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:7px; }
+  .search-bar-row { display:flex; gap:6px; align-items:center; }
+  .search-bar-input {
+    flex:1; padding:9px 12px; background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; font-family:'DM Sans',sans-serif; font-size:.84rem; color:var(--text);
     outline:none; transition:border-color .15s;
   }
-  .search-input::placeholder { color:var(--muted); }
-  .search-input:focus { border-color:var(--accent); }
-  .search-go-btn {
+  .search-bar-input::placeholder { color:var(--muted); }
+  .search-bar-input:focus { border-color:var(--accent); }
+  .search-bar-btn {
     padding:9px 14px; background:var(--accent); color:#fff; border:none; border-radius:6px;
-    font-family:'DM Sans',sans-serif; font-size:.83rem; font-weight:500; cursor:pointer;
-    transition:background .15s, transform .1s; white-space:nowrap;
+    font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:500; cursor:pointer;
+    transition:background .15s; white-space:nowrap; flex-shrink:0;
   }
-  .search-go-btn:hover { background:#e88a6a; }
-  .search-go-btn:active { transform:scale(.97); }
-  .search-clear-btn {
-    display:none; padding:9px 11px; background:none; border:1px solid var(--border);
-    border-radius:6px; color:var(--muted); font-size:.83rem; cursor:pointer; transition:all .15s;
+  .search-bar-btn:hover { background:#e88a6a; }
+  .search-bar-clear {
+    padding:9px 10px; background:none; border:1px solid var(--border); border-radius:6px;
+    color:var(--muted); font-size:.82rem; cursor:pointer; transition:all .14s; flex-shrink:0;
+    display:none;
   }
-  .search-clear-btn.visible { display:block; }
-  .search-clear-btn:hover { border-color:var(--danger); color:var(--danger); }
-  /* Sökresultat */
-  .search-results-area { margin-bottom:18px; display:none; }
-  .search-results-area.visible { display:block; }
-  .search-result-label { font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
-  .search-hit {
-    padding:8px 12px; background:var(--surface); border:1px solid var(--border);
-    border-radius:6px; cursor:pointer; margin-bottom:5px; transition:all .14s;
-  }
-  .search-hit:hover { border-color:var(--accent); background:rgba(218,119,86,.07); }
-  .search-hit.active { border-color:var(--accent); background:rgba(218,119,86,.12); }
-  .search-hit-title { font-size:.83rem; color:var(--text); font-weight:500; margin-bottom:2px; }
-  .search-hit-meta { font-size:.72rem; color:var(--muted); }
-  .search-hit-beslut { font-size:.76rem; color:#b0b6c4; margin-top:4px; line-height:1.5;
-    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .no-search-results { font-size:.82rem; color:var(--muted); padding:12px 0; }
+  .search-bar-clear.visible { display:block; }
+  .search-bar-clear:hover { border-color:var(--danger); color:var(--danger); }
+  .search-db-status { font-size:.7rem; color:var(--muted); margin-top:5px; min-height:14px; }
+  .search-db-status.ready { color:#4ee86a; }
+  .search-db-status.loading { color:var(--accent); }
+
   /* Dimma hårdkodade ämnen i sökläge */
   .topics-list.search-mode { opacity:.6; pointer-events:none; transition:opacity .25s; }
-  .topics-list.search-mode .topic-btn, .topics-list.search-mode .subcat-btn { cursor:default; }
 
+  @media(max-width:900px){
     .right-panel{flex-direction:column;}
     .controls-col{width:100%;position:static;height:auto;}
     .event-detail-panel{width:100%;position:static;height:auto;padding:0 32px 20px;}
@@ -268,6 +267,13 @@
 </head>
 <body>
 <div class="wrapper">
+
+<!-- Laddningsoverlay -->
+<div class="pk-loading-overlay" id="pkLoadingOverlay">
+  <div class="pk-loading-spinner"></div>
+  <div class="pk-loading-text">Laddar <strong>Partikompass</strong>…</div>
+</div>
+
 <div class="top-bar">
   <div class="left-panel">
     <div class="logo-block">
@@ -283,18 +289,16 @@
 
   <div class="right-panel">
     <div class="controls-col">
-      <div class="search-area">
-        <div class="search-area-label">Sök bland alla omröstningar</div>
-        <div class="search-input-row">
-          <input type="text" class="search-input" id="searchInput" placeholder="ex. kärnkraft, migration, skatt..." onkeydown="if(event.key==='Enter')runDatabaseSearch()">
-          <button class="search-go-btn" onclick="runDatabaseSearch()">Sök</button>
-          <button class="search-clear-btn" id="searchClearBtn" onclick="clearDatabaseSearch()">✕</button>
+      <div class="search-bar-wrap">
+        <div class="search-bar-label">Sök bland alla omröstningar</div>
+        <div class="search-bar-row">
+          <input type="text" class="search-bar-input" id="dbSearchInput"
+            placeholder="ex. kärnkraft, migration…"
+            onkeydown="if(event.key==='Enter')runDbSearch()">
+          <button class="search-bar-btn" onclick="runDbSearch()">Sök</button>
+          <button class="search-bar-clear" id="dbSearchClear" onclick="clearDbSearch()">✕</button>
         </div>
-      </div>
-
-      <div class="search-results-area" id="searchResultsArea">
-        <div class="search-result-label" id="searchResultLabel"></div>
-        <div id="searchHitsList"></div>
+        <div class="search-db-status" id="dbStatus"></div>
       </div>
 
       <div class="step-row">
@@ -1626,244 +1630,67 @@ const mockData = {
   }
 };
 
-// ─── PARTIKOMPASS JSON (ladda från GitHub) ────────────────────────────────────
-let pkData = null; // { sammanfattning, roster, hardkodade_amnen }
-let pkLoading = false;
+// ─── JSON-LADDNING (startar direkt, i bakgrunden) ─────────────────────────────
+let pkData = null;
+let pkReady = false;
+
+function setDbStatus(msg, cls) {
+  const el = document.getElementById('dbStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'search-db-status' + (cls ? ' ' + cls : '');
+}
 
 async function loadPkData() {
   if (pkData) return pkData;
-  if (pkLoading) {
-    // Vänta tills laddning är klar
-    while (pkLoading) await new Promise(r => setTimeout(r, 50));
-    return pkData;
-  }
-  pkLoading = true;
+  setDbStatus('Laddar databas…', 'loading');
   try {
-    // Försök ladda gzippad fil från GitHub Pages
-    const url = 'partikompass.json.gz';
-    const resp = await fetch(url);
+    const resp = await fetch('partikompass.json.gz');
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const buf = await resp.arrayBuffer();
-    // Packa upp gzip med DecompressionStream (stöds i moderna webbläsare)
     const ds = new DecompressionStream('gzip');
     const writer = ds.writable.getWriter();
     writer.write(new Uint8Array(buf));
     writer.close();
     const reader = ds.readable.getReader();
     const chunks = [];
-    let done = false;
-    while (!done) {
-      const { value, done: d } = await reader.read();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
       if (value) chunks.push(value);
-      done = d;
     }
-    const text = new TextDecoder().decode(
-      chunks.reduce((a, b) => { const c = new Uint8Array(a.length + b.length); c.set(a); c.set(b, a.length); return c; })
-    );
-    pkData = JSON.parse(text);
+    const merged = new Uint8Array(chunks.reduce((a, b) => a + b.length, 0));
+    let offset = 0;
+    for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+    pkData = JSON.parse(new TextDecoder().decode(merged));
+    pkReady = true;
+    setDbStatus('✓ Databas redo', 'ready');
+    // Göm loading overlay
+    const overlay = document.getElementById('pkLoadingOverlay');
+    if (overlay) { overlay.classList.add('fade-out'); setTimeout(() => overlay.classList.add('hidden'), 400); }
   } catch(e) {
-    console.error('Kunde inte ladda partikompass.json.gz:', e);
+    console.warn('Kunde inte ladda partikompass.json.gz:', e);
     pkData = { sammanfattning: [], roster: {}, hardkodade_amnen: {} };
+    pkReady = true;
+    setDbStatus('');
+    const overlay = document.getElementById('pkLoadingOverlay');
+    if (overlay) { overlay.classList.add('fade-out'); setTimeout(() => overlay.classList.add('hidden'), 400); }
   }
-  pkLoading = false;
   return pkData;
 }
 
-// Ladda JSON i bakgrunden direkt när sidan öppnas
+// Starta laddning direkt
 loadPkData();
 
-// ─── DATABASSÖKNING ───────────────────────────────────────────────────────────
-let currentSearchKey = null; // år|id för vald sökträff
-
-async function runDatabaseSearch() {
-  const query = document.getElementById('searchInput').value.trim().toLowerCase();
-  if (!query) return;
-
-  // Kolla att partier är valda
-  if (selectedParties.size === 0) {
-    triggerShake(document.getElementById('partyListContainer'));
-    return;
-  }
-
-  const resultsArea = document.getElementById('searchResultsArea');
-  const hitsList = document.getElementById('searchHitsList');
-  const label = document.getElementById('searchResultLabel');
-  const clearBtn = document.getElementById('searchClearBtn');
-
-  hitsList.innerHTML = '<div style="font-size:.8rem;color:var(--muted);padding:8px 0;">Söker…</div>';
-  resultsArea.classList.add('visible');
-  document.getElementById('topicList').classList.add('search-mode');
-  clearBtn.classList.add('visible');
-  currentSearchKey = null;
-
-  const data = await loadPkData();
-  const sammanfattning = data.sammanfattning || [];
-
-  // Filtrera på sökord i titel + beslut
-  const traffar = sammanfattning.filter(r => {
-    const text = ((r.t || '') + ' ' + (r.b || '')).toLowerCase();
-    return text.includes(query);
-  });
-
-  // Sortera senaste år först
-  traffar.sort((a, b) => b.a.localeCompare(a.a));
-
-  label.textContent = `${traffar.length} träffar på "${query}"`;
-
-  if (traffar.length === 0) {
-    hitsList.innerHTML = '<div class="no-search-results">Inga omröstningar hittades. Prova ett annat sökord.</div>';
-    return;
-  }
-
-  hitsList.innerHTML = traffar.map(r => {
-    const key = `${r.a}|${r.i}`;
-    const beslutKort = r.b ? r.b.substring(0, 120) + (r.b.length > 120 ? '…' : '') : '';
-    return `<div class="search-hit" data-key="${key}" onclick="selectSearchHit('${key}')">
-      <div class="search-hit-title">${r.t || r.i}</div>
-      <div class="search-hit-meta">${r.a} · ${r.i}</div>
-      ${beslutKort ? `<div class="search-hit-beslut">${beslutKort}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-
-async function selectSearchHit(key) {
-  currentSearchKey = key;
-
-  // Markera aktiv träff
-  document.querySelectorAll('.search-hit').forEach(el => {
-    el.classList.toggle('active', el.dataset.key === key);
-  });
-
-  const data = await loadPkData();
-  const roster = data.roster || {};
-  const sammanfattning = data.sammanfattning || [];
-
-  // Hitta sammanfattning för detta key
-  const [ar, id] = key.split('|');
-  const sammRad = sammanfattning.find(r => r.a === ar && r.i === id);
-
-  // Hämta röstdata
-  const rosterData = roster[key] || [];
-
-  // Bygg partikort för valda partier
-  const resultsEl = document.getElementById('results');
-  const partiesToShow = [...selectedParties];
-
-  if (partiesToShow.length === 0) {
-    triggerShake(document.getElementById('partyListContainer'));
-    return;
-  }
-
-  const cards = partiesToShow.map(pk => {
-    const partyObj = parties.find(p => p.key === pk);
-    if (!partyObj) return '';
-
-    // Filtrera ledamöter för detta parti
-    const partyRoster = rosterData.filter(r => normalizeParti(r.p) === pk);
-
-    const forCount     = partyRoster.filter(r => normalizeRost(r.r) === 'for').length;
-    const againstCount = partyRoster.filter(r => normalizeRost(r.r) === 'against').length;
-    const abstainCount = partyRoster.filter(r => normalizeRost(r.r) === 'abstain').length;
-    const total = partyRoster.length;
-
-    let overall = 'mixed';
-    if (forCount > againstCount && forCount > abstainCount) overall = 'for';
-    else if (againstCount > forCount && againstCount > abstainCount) overall = 'against';
-
-    const pillClass = overall === 'for' ? 'is-for' : overall === 'against' ? 'is-against' : 'is-mixed';
-    const pillLabel = overall === 'for' ? 'Partiet är för' : overall === 'against' ? 'Partiet är emot' : 'Partiets ståndpunkt är oklar';
-
-    // Lampor
-    const maxLamps = 90;
-    const scale = total > maxLamps ? maxLamps / total : 1;
-    const lamps = partyRoster.slice(0, maxLamps).map(r => {
-      const v = normalizeRost(r.r);
-      return `<span class="lamp ${v}"></span>`;
-    }).join('');
-    const lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps}</div>`;
-
-    const cardId = `sc-${pk}-${Date.now()}`;
-    return `<div class="result-card">
-      <div class="card-header">
-        <div class="party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${pk}</div>
-        <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${id} · ${ar}</div></div>
-      </div>
-      <div class="card-body">
-        <div class="section-label">Partiets röst</div>
-        <div class="stance-summary"><span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel}</span></div>
-        ${sammRad?.b ? `<button class="expand-btn" onclick="toggleDetail('${cardId}',this)">Läs mer ▾</button>
-        <div class="stance-detail" id="${cardId}">${sammRad.b}</div>` : ''}
-        <div class="divider"></div>
-        <div class="section-label">Ledamöternas röster (${total} st)</div>
-        <div class="vote-history">
-          <div class="vote-row vote-item clickable-vote" onclick="showSearchRosterDetail('${key}','${pk}')">
-            ${lampsHtml}
-            <span class="vote-text">För: ${forCount} · Emot: ${againstCount} · Frånv: ${abstainCount}</span>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-
-  resultsEl.innerHTML = `<div class="results-columns">${cards}</div>`;
-  document.querySelectorAll('.result-card').forEach((el, i) => { el.style.animationDelay = `${i * 80}ms`; });
-
-  // Visa beslut i korthet i informationsrutan
-  if (sammRad) {
-    document.getElementById('detailEventLabel').textContent = sammRad.t || id;
-    document.getElementById('detailDesc').textContent = sammRad.b || 'Ingen beskrivning tillgänglig.';
-    document.getElementById('detailParties').innerHTML = '';
-    document.getElementById('detailMembersSection').style.display = 'none';
-    document.getElementById('eventDetailPlaceholder').classList.add('hidden');
-    document.getElementById('eventDetailInner').classList.remove('hidden');
-  }
-}
-
-async function showSearchRosterDetail(key, partyKey) {
-  const data = await loadPkData();
-  const rosterData = (data.roster || {})[key] || [];
-  const partyRoster = rosterData.filter(r => normalizeParti(r.p) === partyKey);
-  const partyObj = parties.find(p => p.key === partyKey);
-
-  const header = document.getElementById('detailMembersHeader');
-  const list = document.getElementById('detailMembersList');
-  const [ar] = key.split('|');
-
-  header.textContent = `${partyObj?.name || partyKey} — ledamöter ${ar}`;
-  list.innerHTML = partyRoster.map(r => {
-    const v = normalizeRost(r.r);
-    const color = v==='for'?'#3ecb55':v==='against'?'#e84040':'#f0b830';
-    const label = v==='for'?'För':v==='against'?'Emot':'Frånv.';
-    return `<div class="detail-member-row">
-      <span>${r.n}</span>
-      <span style="display:flex;align-items:center;gap:5px;color:${color};font-size:.7rem;">
-        ${label}<span class="member-lamp ${v}"></span>
-      </span>
-    </div>`;
-  }).join('');
-
-  document.getElementById('detailMembersSection').style.display = 'block';
-}
-
-function clearDatabaseSearch() {
-  document.getElementById('searchInput').value = '';
-  document.getElementById('searchResultsArea').classList.remove('visible');
-  document.getElementById('topicList').classList.remove('search-mode');
-  document.getElementById('searchClearBtn').classList.remove('visible');
-  currentSearchKey = null;
-  document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
-  closeEventDetail();
-}
-
-// Hjälpfunktioner för att normalisera partinamn och röstvärden från JSON
+// ─── HJÄLPFUNKTIONER ──────────────────────────────────────────────────────────
 function normalizeParti(p) {
   if (!p) return '';
   const map = {
     'M':'M','S':'S','V':'V','SD':'SD','C':'C','KD':'KD','L':'L','MP':'MP',
     'Moderaterna':'M','Socialdemokraterna':'S','Vänsterpartiet':'V',
     'Sverigedemokraterna':'SD','Centerpartiet':'C','Kristdemokraterna':'KD',
-    'Liberalerna':'L','Miljöpartiet':'MP','FP':'L','fp':'L','m':'M','s':'S',
-    'v':'V','sd':'SD','c':'C','kd':'KD','l':'L','mp':'MP'
+    'Liberalerna':'L','Miljöpartiet':'MP','FP':'L','fp':'L',
+    'm':'M','s':'S','v':'V','sd':'SD','c':'C','kd':'KD','l':'L','mp':'MP'
   };
   return map[p.trim()] || p.trim().toUpperCase();
 }
@@ -1871,9 +1698,185 @@ function normalizeParti(p) {
 function normalizeRost(r) {
   if (!r) return 'abstain';
   const v = r.trim().toLowerCase();
-  if (v === 'ja' || v === 'yes' || v === 'for' || v === 'för') return 'for';
-  if (v === 'nej' || v === 'no' || v === 'against' || v === 'emot') return 'against';
-  return 'abstain'; // Frånvarande, Avstår etc
+  if (v === 'ja' || v === 'yes' || v === 'för' || v === 'for') return 'for';
+  if (v === 'nej' || v === 'no' || v === 'emot' || v === 'against') return 'against';
+  return 'abstain';
+}
+
+// ─── DATABASSÖKNING ───────────────────────────────────────────────────────────
+let dbSearchActive = false;
+
+async function runDbSearch() {
+  const query = document.getElementById('dbSearchInput').value.trim().toLowerCase();
+  if (!query) return;
+
+  if (selectedParties.size === 0) {
+    triggerShake(document.getElementById('partyListContainer'));
+    return;
+  }
+
+  // Vänta på att data laddas
+  if (!pkReady) {
+    setDbStatus('Väntar på databas…', 'loading');
+    while (!pkReady) await new Promise(r => setTimeout(r, 100));
+  }
+
+  dbSearchActive = true;
+  document.getElementById('topicList').classList.add('search-mode');
+  document.getElementById('dbSearchClear').classList.add('visible');
+
+  const data = pkData;
+  const sammanfattning = data.sammanfattning || [];
+  const roster = data.roster || {};
+
+  // Hitta alla unika omröstningar som matchar sökordet
+  const traffar = sammanfattning.filter(r => {
+    const text = ((r.t || '') + ' ' + (r.b || '')).toLowerCase();
+    return text.includes(query);
+  });
+
+  // Sortera senaste år först, ta bort dubletter (samma id, behåll senaste år)
+  traffar.sort((a, b) => b.a.localeCompare(a.a));
+  const sedda = new Set();
+  const unika = traffar.filter(r => {
+    if (sedda.has(r.i)) return false;
+    sedda.add(r.i);
+    return true;
+  });
+
+  const resultsEl = document.getElementById('results');
+
+  if (unika.length === 0) {
+    resultsEl.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Inga omröstningar hittades för "<strong>${query}</strong>".<br>Prova ett annat sökord.</p></div>`;
+    return;
+  }
+
+  // Bygg ett kort per omröstning per valt parti
+  const partiesToShow = [...selectedParties];
+  const allCards = unika.map(r => {
+    const key = `${r.a}|${r.i}`;
+    const rosterData = roster[key] || [];
+
+    return partiesToShow.map(pk => {
+      const partyObj = parties.find(p => p.key === pk);
+      if (!partyObj) return '';
+
+      const partyRoster = rosterData.filter(m => normalizeParti(m.p) === pk);
+      const forCount     = partyRoster.filter(m => normalizeRost(m.r) === 'for').length;
+      const againstCount = partyRoster.filter(m => normalizeRost(m.r) === 'against').length;
+      const abstainCount = partyRoster.filter(m => normalizeRost(m.r) === 'abstain').length;
+      const total = partyRoster.length;
+
+      let overall = 'mixed';
+      if (forCount > againstCount && forCount > abstainCount) overall = 'for';
+      else if (againstCount > forCount && againstCount > abstainCount) overall = 'against';
+
+      const pillClass = overall === 'for' ? 'is-for' : overall === 'against' ? 'is-against' : 'is-mixed';
+      const pillLabel = overall === 'for' ? 'Partiet är för' : overall === 'against' ? 'Partiet är emot' : 'Oklar ståndpunkt';
+
+      const lamps = partyRoster.slice(0, 90).map(m => {
+        const v = normalizeRost(m.r);
+        return `<span class="lamp ${v}"></span>`;
+      }).join('');
+      const lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps}</div>`;
+
+      const cardId = `db-${pk}-${r.i}-${r.a}`.replace(/[^a-z0-9-]/gi,'_');
+      const safeKey = key.replace(/['"]/g, '');
+      const safePk = pk.replace(/['"]/g, '');
+
+      return `<div class="result-card">
+        <div class="card-header">
+          <div class="party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${pk}</div>
+          <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${r.t ? r.t.substring(0,40) : r.i} · ${r.a}</div></div>
+        </div>
+        <div class="card-body">
+          <div class="section-label">Partiets röst</div>
+          <div class="stance-summary"><span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel}</span></div>
+          <div class="divider"></div>
+          <div class="section-label">Rösthistorik</div>
+          <div class="vote-history">
+            <div class="vote-row vote-item clickable-vote" onclick="showDbDetail('${safeKey}','${safePk}','${r.t ? r.t.replace(/'/g,"\\'").substring(0,60) : r.i}','${r.a}')" title="Klicka för mer info">
+              ${lampsHtml}
+              <span class="vote-text">${r.i} — ${forCount} för, ${againstCount} emot, ${abstainCount} frånv.</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }).join('');
+
+  resultsEl.innerHTML = `<div class="results-columns">${allCards}</div>`;
+  document.querySelectorAll('.result-card').forEach((el, i) => { el.style.animationDelay = `${i * 40}ms`; });
+}
+
+async function showDbDetail(key, partyKey, titel, ar) {
+  // Markera aktivt kort
+  document.querySelectorAll('.clickable-vote').forEach(el => {
+    const attr = el.getAttribute('onclick') || '';
+    el.classList.toggle('active', attr.includes(`'${key}'`));
+  });
+
+  const data = pkData || { sammanfattning: [], roster: {} };
+  const [yearStr, idStr] = key.split('|');
+
+  // Hitta sammanfattning
+  const sammRad = (data.sammanfattning || []).find(r => r.a === yearStr && r.i === idStr);
+  const rosterData = (data.roster || {})[key] || [];
+  const partyRoster = rosterData.filter(m => normalizeParti(m.p) === partyKey);
+  const partyObj = parties.find(p => p.key === partyKey);
+
+  // Informationsrutan
+  document.getElementById('detailEventLabel').textContent = sammRad?.t || titel || idStr;
+  document.getElementById('detailDesc').textContent = sammRad?.b || 'Ingen beskrivning tillgänglig.';
+
+  // Partirad
+  const forCount     = partyRoster.filter(m => normalizeRost(m.r) === 'for').length;
+  const againstCount = partyRoster.filter(m => normalizeRost(m.r) === 'against').length;
+  const abstainCount = partyRoster.filter(m => normalizeRost(m.r) === 'abstain').length;
+  const stanceColor = forCount > againstCount ? '#4ee86a' : againstCount > forCount ? '#f07070' : '#f0c040';
+  const stanceLabel = forCount > againstCount ? 'Röstade för' : againstCount > forCount ? 'Röstade emot' : 'Delad';
+
+  document.getElementById('detailParties').innerHTML = partyObj ? `
+    <div class="detail-party-row" onclick="showDbMemberList('${key}','${partyKey}')" style="cursor:pointer;" title="Klicka för ledamöter">
+      <div class="detail-party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${partyKey}</div>
+      <span style="flex:1;">${partyObj.name}</span>
+      <span style="color:${stanceColor};font-size:.75rem;font-weight:500;">${stanceLabel}</span>
+    </div>` : '';
+
+  // Visa ledamöter direkt
+  showDbMemberList(key, partyKey);
+
+  document.getElementById('eventDetailPlaceholder').classList.add('hidden');
+  document.getElementById('eventDetailInner').classList.remove('hidden');
+}
+
+function showDbMemberList(key, partyKey) {
+  const data = pkData || { roster: {} };
+  const rosterData = (data.roster || {})[key] || [];
+  const partyRoster = rosterData.filter(m => normalizeParti(m.p) === partyKey);
+  const partyObj = parties.find(p => p.key === partyKey);
+  const [yearStr] = key.split('|');
+
+  document.getElementById('detailMembersHeader').textContent = `${partyObj?.name || partyKey} — ledamöter ${yearStr}`;
+  document.getElementById('detailMembersList').innerHTML = partyRoster.map(m => {
+    const v = normalizeRost(m.r);
+    const color = v==='for'?'#3ecb55':v==='against'?'#e84040':'#f0b830';
+    const label = v==='for'?'För':v==='against'?'Emot':'Frånv.';
+    return `<div class="detail-member-row">
+      <span>${m.n}</span>
+      <span style="display:flex;align-items:center;gap:5px;color:${color};font-size:.7rem;">${label}<span class="member-lamp ${v}"></span></span>
+    </div>`;
+  }).join('');
+  document.getElementById('detailMembersSection').style.display = 'block';
+}
+
+function clearDbSearch() {
+  dbSearchActive = false;
+  document.getElementById('dbSearchInput').value = '';
+  document.getElementById('dbSearchClear').classList.remove('visible');
+  document.getElementById('topicList').classList.remove('search-mode');
+  document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
+  closeEventDetail();
 }
 
 async function fetchPartyStance(partyKey, sub) {
