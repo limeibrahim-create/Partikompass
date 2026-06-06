@@ -204,7 +204,53 @@
   .footer-disclaimer { line-height:1.7; }
   .footer-sources { display:flex; gap:16px; flex-wrap:wrap; margin-top:4px; }
   .footer-sources a { color:var(--accent2); text-decoration:underline; text-underline-offset:2px; }
-  @media(max-width:900px){
+  /* ─── SEARCHBAR ─────────────────────────────────────────────────────────── */
+  .search-area {
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-area-label { font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .search-input-row { display:flex; gap:7px; }
+  .search-input {
+    flex:1; padding:9px 13px; background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; font-family:'DM Sans',sans-serif; font-size:.85rem; color:var(--text);
+    outline:none; transition:border-color .15s;
+  }
+  .search-input::placeholder { color:var(--muted); }
+  .search-input:focus { border-color:var(--accent); }
+  .search-go-btn {
+    padding:9px 14px; background:var(--accent); color:#fff; border:none; border-radius:6px;
+    font-family:'DM Sans',sans-serif; font-size:.83rem; font-weight:500; cursor:pointer;
+    transition:background .15s, transform .1s; white-space:nowrap;
+  }
+  .search-go-btn:hover { background:#e88a6a; }
+  .search-go-btn:active { transform:scale(.97); }
+  .search-clear-btn {
+    display:none; padding:9px 11px; background:none; border:1px solid var(--border);
+    border-radius:6px; color:var(--muted); font-size:.83rem; cursor:pointer; transition:all .15s;
+  }
+  .search-clear-btn.visible { display:block; }
+  .search-clear-btn:hover { border-color:var(--danger); color:var(--danger); }
+  /* Sökresultat */
+  .search-results-area { margin-bottom:18px; display:none; }
+  .search-results-area.visible { display:block; }
+  .search-result-label { font-size:.62rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+  .search-hit {
+    padding:8px 12px; background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer; margin-bottom:5px; transition:all .14s;
+  }
+  .search-hit:hover { border-color:var(--accent); background:rgba(218,119,86,.07); }
+  .search-hit.active { border-color:var(--accent); background:rgba(218,119,86,.12); }
+  .search-hit-title { font-size:.83rem; color:var(--text); font-weight:500; margin-bottom:2px; }
+  .search-hit-meta { font-size:.72rem; color:var(--muted); }
+  .search-hit-beslut { font-size:.76rem; color:#b0b6c4; margin-top:4px; line-height:1.5;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .no-search-results { font-size:.82rem; color:var(--muted); padding:12px 0; }
+  /* Dimma hårdkodade ämnen i sökläge */
+  .topics-list.search-mode { opacity:.6; pointer-events:none; transition:opacity .25s; }
+  .topics-list.search-mode .topic-btn, .topics-list.search-mode .subcat-btn { cursor:default; }
+
     .right-panel{flex-direction:column;}
     .controls-col{width:100%;position:static;height:auto;}
     .event-detail-panel{width:100%;position:static;height:auto;padding:0 32px 20px;}
@@ -237,6 +283,20 @@
 
   <div class="right-panel">
     <div class="controls-col">
+      <div class="search-area">
+        <div class="search-area-label">Sök bland alla omröstningar</div>
+        <div class="search-input-row">
+          <input type="text" class="search-input" id="searchInput" placeholder="ex. kärnkraft, migration, skatt..." onkeydown="if(event.key==='Enter')runDatabaseSearch()">
+          <button class="search-go-btn" onclick="runDatabaseSearch()">Sök</button>
+          <button class="search-clear-btn" id="searchClearBtn" onclick="clearDatabaseSearch()">✕</button>
+        </div>
+      </div>
+
+      <div class="search-results-area" id="searchResultsArea">
+        <div class="search-result-label" id="searchResultLabel"></div>
+        <div id="searchHitsList"></div>
+      </div>
+
       <div class="step-row">
         <div class="step-badge active" id="badge1">1</div>
         <span class="step-label">Valda partier</span>
@@ -535,29 +595,47 @@ async function runSearch() {
 function renderCard(data) {
   const partyObj = parties.find(p => p.key === data.party) || { bg:'#333', fg:'#fff', name:data.party };
   const cardId = `card-${data.party}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-  const pillClass = data.overall==='for' ? 'is-for' : data.overall==='against' ? 'is-against' : 'is-mixed';
-  const pillLabel = data.overall==='for' ? 'Partiet är för' : data.overall==='against' ? 'Partiet är emot' : 'Partiets ståndpunkt är oklar';
 
   const schema = voteSchema[data.topic] || [];
+
+  // Compute overall from stanceMap majority (weighted by seats)
+  function computeOverall(stanceMap, partyKey) {
+    const allStances = Object.values(stanceMap || {});
+    if (!allStances.length) return data.overall || 'unknown';
+    let forCount = 0, againstCount = 0, mixedCount = 0;
+    allStances.forEach(s => {
+      if (s === 'for') forCount++;
+      else if (s === 'against') againstCount++;
+      else mixedCount++;
+    });
+    if (forCount > againstCount && forCount > mixedCount) return 'for';
+    if (againstCount > forCount && againstCount > mixedCount) return 'against';
+    return 'mixed';
+  }
+
+  const computedOverall = computeOverall(data.stanceMap, data.party);
+  const pillClass = computedOverall==='for' ? 'is-for' : computedOverall==='against' ? 'is-against' : 'is-mixed';
+  const pillLabel = computedOverall==='for' ? 'Partiet är för' : computedOverall==='against' ? 'Partiet är emot' : 'Partiets ståndpunkt är oklar';
+
   const voteRows = schema.map(period => {
-    // Find max seats across ALL selected parties for this period, for alignment
     const maxSeats = Math.max(...[...selectedParties].map(pk => partySeats[pk]?.[period.period] || 0), partySeats[data.party]?.[period.period] || 0);
-    const header = `<div class="vote-period-header">${period.period}</div>`;
-    const items = period.events.map(ev => {
+    const header = `<div class="vote-period-header">Mandatperiod ${period.period}</div>`;
+    const items = period.events.map((ev, evIdx) => {
       const seats = partySeats[data.party]?.[period.period] || 0;
+      const punktLabel = `${ev.label} — Punkt ${evIdx + 1}`;
+      const dateHtml = ev.date ? `<div style="font-size:.58rem;color:var(--muted);margin-bottom:2px;padding-left:2px;">${ev.date}</div>` : '';
       let lampsHtml;
       if (seats > 0) {
         const voteDistrib = getMemberVotes(data.party, ev.id, period.period, seats);
-        // Pad to maxSeats with empty lamps for alignment
         const padCount = Math.max(0, maxSeats - seats);
         const lamps = voteDistrib.map(v => `<span class="lamp ${v}"></span>`).join('') +
                       Array(padCount).fill('<span class="lamp empty"></span>').join('');
-        lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps}</div>`;
+        lampsHtml = `<div class="vote-lamps">${lamps}</div>`;
       } else {
-        const padLamps = Array(maxSeats).fill('<span class="lamp empty"></span>').join('');
+        const padLamps = Array(maxSeats || 1).fill('<span class="lamp empty"></span>').join('');
         lampsHtml = `<div class="vote-lamps">${padLamps}</div>`;
       }
-      return `<div class="vote-row vote-item clickable-vote" onclick="showEventDetail('${ev.id}','${data.party}','${period.period}')" title="Klicka för mer info">${lampsHtml}<span class="vote-text">${ev.label}</span></div>`;
+      return `<div style="margin-bottom:4px;">${dateHtml}<div class="vote-row vote-item clickable-vote" onclick="showEventDetail('${ev.id}','${data.party}','${period.period}')" title="Klicka för mer info">${lampsHtml}<span class="vote-text">${punktLabel}</span></div></div>`;
     }).join('');
     return `<div class="vote-period-group">${header}${items}</div>`;
   }).join('');
@@ -718,29 +796,74 @@ function getMemberVotes(partyKey, eventId, period, seats) {
   return votes;
 }
 
-// ─── LEDAMÖTER PER PARTI & PERIOD ─────────────────────────────────────────────
+// ─── LEDAMÖTER PER PARTI & PERIOD (källa: riksdagsledamoter_stadad.xlsx) ────
 const memberData = {
   M: {
-    '2022–2026': ['Ulf Kristersson','Elisabeth Svantesson','Fredrik Reinfeldt','Anna Kinberg Batra','Carl Bildt jr','Gunnar Strömmer','Maria Malmer Stenergard','Johan Forssell','Jessika Roswall','Andreas Carlson','Camilla Waltersson Grönvall','Acko Ankarberg Johansson','Peter Kullgren','Ebba Busch (M-nära)','Anders Ygeman (M)','Pål Jonson','Lars Hjälmered','Betty Malmberg','Lotta Finstorp','Helena Bouveng','Mauricio Rojas','Niklas Wykman','Staffan Eklöf','Ann-Charlotte Hammar Johnsson','Edward Riedl','Cecilia Widegren','Hans Rothenberg','Christian Carlsson','Sofia Westergren','Erik Ottosson','Mikael Damsgaard','Alexandra Anstrell','Maria Stockhaus','Viktor Wärnick','Sten Bergheden','Jan Ericson','Ann-Sofie Lifvenhage','Johan Hultberg','Thomas Morell','Lena Asplund','Boriana Åberg','Ann Bergström','Tobias Andersson (M)','Noria Manouchi','Adam Marttinen','Patrik Jönsson','Hampus Hagman','Saila Quicklund','Marie-Louise Hänel Sandström','Magdalena Schröder','Göran Hägglund (M-nära)','Jonas Jacobsson Gjörtler','Johan Büser (M)','Daniel Bäckström (M)','Eva Lindh','Mattias Karlsson (M)','Jimmy Ståhl (M-fd)','Mats Green','Erik Slottner','Marléne Lund Kopparklint','Ewa Thalén Finné','Jan Björklund (L/M)','Helena Lindahl','Åsa Coenraads','Michael Rubbestad','Jörgen Berglund','Johnny Skalin (fd M)','Hannes Hervén'],
-    '2018–2022': ['Ulf Kristersson','Elisabeth Svantesson','Anna Kinberg Batra','Carl Bildt jr','Gunnar Strömmer','Maria Malmer Stenergard','Johan Forssell','Jessika Roswall','Andreas Carlson','Camilla Waltersson Grönvall','Peter Kullgren','Pål Jonson','Lars Hjälmered','Betty Malmberg','Lotta Finstorp','Helena Bouveng','Mauricio Rojas','Niklas Wykman','Ann-Charlotte Hammar Johnsson','Edward Riedl','Cecilia Widegren','Hans Rothenberg','Christian Carlsson','Sofia Wegerstedt','Erik Ottosson','Mikael Damsgaard','Alexandra Anstrell','Maria Stockhaus','Viktor Wärnick','Sten Bergheden','Jan Ericson','Ann-Sofie Lifvenhage','Johan Hultberg','Thomas Morell','Lena Asplund','Boriana Åberg','Ann Bergström','Noria Manouchi','Adam Marttinen','Patrik Jönsson','Hampus Hagman','Saila Quicklund','Marie-Louise Hänel Sandström','Mats Green','Jonas Jacobsson Gjörtler','Mats Persson','Eva Lindh','Mattias Karlsson (M)','Ewa Thalén Finné','Jan Björklund (L)','Helena Lindahl','Åsa Coenraads','Jörgen Berglund','Johnny Skalin','Hannes Hervén','Åsa Lindestam (M)','Ann-Britt Åsebol','Kristina Nilsson (M)','Ann-Christin Ahlberg (M)','Per Åsling (C/M-nära)','Maria Plass','Krister Örnfjäder (M)','Lars-Axel Nordell (KD/M-nära)','Karin Enström','Beatrice Ask','Göran Thorstensson','Lotta Olsson','Emma Henriksson (M)','Lars Beckman'],
-    '2014–2018': ['Anna Kinberg Batra','Ulf Kristersson','Elisabeth Svantesson','Peter Eriksson (M)','Carl Bildt jr','Gunnar Strömmer','Maria Malmer Stenergard','Johan Forssell','Jessika Roswall','Andreas Carlson','Camilla Waltersson Grönvall','Peter Kullgren','Pål Jonson','Lars Hjälmered','Betty Malmberg','Lotta Finstorp','Helena Bouveng','Ann-Charlotte Hammar Johnsson','Edward Riedl','Cecilia Widegren','Hans Rothenberg','Sofia Wegerstedt','Erik Ottosson','Alexandra Anstrell','Maria Stockhaus','Sten Bergheden','Jan Ericson','Ann-Sofie Lifvenhage','Johan Hultberg','Thomas Morell','Lena Asplund','Boriana Åberg','Saila Quicklund','Marie-Louise Hänel Sandström','Mats Green','Jonas Jacobsson Gjörtler','Eva Lindh','Mattias Karlsson (M)','Ewa Thalén Finné','Helena Lindahl','Åsa Coenraads','Jörgen Berglund','Ann-Britt Åsebol','Beatrice Ask','Göran Thorstensson','Lotta Olsson','Lars Beckman','Karin Enström','Jessica Polfjärd','Åsa Lindestam','Per-Ingvar Johnsson','Maria Plass','Lars-Axel Nordell','Krister Örnfjäder','Ann-Christin Ahlberg','Kristina Nilsson','Per Åsling','Finn Bengtsson','Katarina Brännström','Ulrika Karlsson','Henrik Ripa','Tomas Tobé','Christian Holm Barenfeld','Jonas Gunnarsson (M)','Staffan Norberg (M)'],
-    '2010–2014': ['Fredrik Reinfeldt','Ulf Kristersson','Elisabeth Svantesson','Beatrice Ask','Anna Kinberg Batra','Carl Bildt','Gunnar Strömmer','Jessika Roswall','Andreas Carlson','Peter Kullgren','Pål Jonson','Lars Hjälmered','Betty Malmberg','Lotta Finstorp','Helena Bouveng','Ann-Charlotte Hammar Johnsson','Edward Riedl','Cecilia Widegren','Hans Rothenberg','Sten Bergheden','Jan Ericson','Johan Hultberg','Thomas Morell','Lena Asplund','Boriana Åberg','Saila Quicklund','Marie-Louise Hänel Sandström','Mats Green','Jonas Jacobsson Gjörtler','Eva Lindh','Ewa Thalén Finné','Helena Lindahl','Åsa Coenraads','Jörgen Berglund','Ann-Britt Åsebol','Göran Thorstensson','Lotta Olsson','Lars Beckman','Karin Enström','Jessica Polfjärd','Per-Ingvar Johnsson','Lars-Axel Nordell','Krister Örnfjäder','Finn Bengtsson','Katarina Brännström','Ulrika Karlsson','Henrik Ripa','Tomas Tobé','Christian Holm Barenfeld','Johan Löfstrand','Staffan Norberg','Johan Pehrson (FP/M-nära)','Carl-Oskar Bohlin','Mikael Cederbratt','Fredrik Schulte','Olof Lavesson','Margareta Cederfelt','Maria Abrahamsson','Patrik Forslund','Ann Arleklo','Marta Obminska','Lotta Gröningsson','Statssekreterare A','Statssekreterare B','Statssekreterare C','Statssekreterare D','Statssekreterare E','Statssekreterare F','Anders Flanking','Maria Larsson (KD/M-nära)','Lars-Erik Lövdén','Leif Jakobsson','Roger Tiefensee','Margareta Pålsson','Jenny Petersson','Anna Steele'],
+    '2022–2026': ["Adam Reuterskiöld", "Alexandra Anstrell", "Anders Hansson", "Andreas Norlö©n", "Ann-Britt ö…sebol", "Ann-Charlotte Hammar Johnsson", "Ann-Sofie Alm", "Ann-Sofie Lifvenhage", "Annicka Engblom", "Betty Malmberg", "Boriana ö…berg", "Camilla Brunsberg", "Camilla Waltersson Grönvall", "Carl-Oskar Bohlin", "Caroline Högström", "Cecilia Gustafsson", "Cecilia Widegren", "Cecilie Tenfjord Toftby", "Charlotte Nordström", "Christian Sonesson", "David Josefsson", "Edward Riedl", "Elisabeth Björnsdotter Rahm", "Elisabeth Svantesson", "Ellen Juntti", "Emma Ahlström Köster", "Erik Ottoson", "Fredrik Ahlstedt", "Fredrik Kärrholm", "Gustaf Göthberg", "Hanif Bali", "Hans Rothenberg", "Hans Wallmark", "Helena Bouveng", "Helena Storckenfeldt", "Ida Drougge", "Jan Ericson", "Jan R Andersson", "Jesper Skalberg Karlsson", "Jessica Rosencrantz", "Jessika Roswall", "Johan Forssell", "Johan Hultberg", "Johanna Rantsi", "John E Weinerhall", "John Widegren", "Josefin Malmqvist", "Jörgen Berglund", "Karin Enström", "Katarina Brännström", "Kjell Jansson", "Kristina Axö©n Olin", "Lars Beckman", "Lars Engsund", "Lars Hjälmered", "Lars Jilmstad", "Lars Johnsson", "Lars Pö¼ss", "Lotta Olsson", "Louise Meijer", "Magdalena Thuresson", "Magnus Stuart", "Malin Höglund", "Margareta Cederfelt", "Maria Malmer Stenergard", "Maria Stockhaus", "Marie Nicholson", "Marie-Louise Hänel Sandström", "Marta Obminska", "Mats Green", "Mattias Karlsson", "Mikael Damsgaard", "Niklas Wykman", "Noria Manouchi", "Oliver Rosengren", "Oskar Svärd", "Peter Ollö©n", "Pö¥l Jonson", "Richard Herrey", "Saila Quicklund", "Sofia Westergren", "Stefan Olsson", "Sten Bergheden", "Thomas Ragnarsson", "Ulf Kristersson", "Ulrik Nilsson", "Ulrika Heindorff", "Ulrika Jörgensen", "Viktor Wärnick", "ö…sa Coenraads"],
+    '2018–2022': ["Alexandra Anstrell", "Amir Adan", "Anders Hansson", "Andreas Norlö©n", "Anette ö…kesson", "Ann-Britt ö…sebol", "Ann-Charlotte Hammar Johnsson", "Ann-Sofie Alm", "Ann-Sofie Lifvenhage", "Anna Kinberg Batra", "Annicka Engblom", "Anti Avsan", "Betty Malmberg", "Boriana ö…berg", "Camilla Brunsberg", "Camilla Waltersson Grönvall", "Carl-Oskar Bohlin", "Caroline Högström", "Cecilia Magnusson", "Cecilia Widegren", "Cecilie Tenfjord Toftby", "Charlotte Nordström", "Christian Holm Barenfeld", "Christian Sonesson", "Dag Klackenberg", "David Josefsson", "Edward Riedl", "Elisabeth Björnsdotter Rahm", "Elisabeth Svantesson", "Ellen Juntti", "Erik Andersson", "Erik Bengtzboe", "Erik Ottoson", "Eva Lohman", "Ewa Thalö©n Finnö©", "Finn Bengtsson", "Fredrik Kärrholm", "Fredrik Schulte", "Gunilla Nordgren", "Gustaf Göthberg", "Göran Pettersson", "Hanif Bali", "Hans Rothenberg", "Hans Wallmark", "Helena Bouveng", "Helena Storckenfeldt", "Ida Drougge", "Isabella Hökmark", "Jan Ericson", "Jan R Andersson", "Jari Puustinen", "Jenny Petersson", "Jesper Skalberg Karlsson", "Jessica Polfjärd", "Jessica Rosencrantz", "Jessika Roswall", "Johan Forssell", "Johan Hultberg", "Johanna Rantsi", "John E Weinerhall", "John Widegren", "Jonas Jacobsson Gjörtler", "Josefin Malmqvist", "Jörgen Andersson", "Jörgen Berglund", "Jörgen Warborn", "Karin Enström", "Katarina Brännström", "Kjell Jansson", "Krister Hammarbergh", "Kristina Axö©n Olin", "Lars Beckman", "Lars Engsund", "Lars Hjälmered", "Lars Jilmstad", "Lars Pö¼ss", "Lars-Arne Staxäng", "Lena Asplund", "Lisbeth Sundö©n Andersson", "Lotta Finstorp", "Lotta Olsson", "Louise Meijer", "Magdalena Thuresson", "Magnus Stuart", "Malin Höglund", "Margareta Cederfelt", "Maria Abrahamsson", "Maria Malmer Stenergard", "Maria Plass", "Maria Stockhaus", "Marie Nicholson", "Marie-Louise Hänel Sandström", "Marta Obminska", "Mats Green", "Mattias Karlsson", "Michael Svensson", "Mikael Cederbratt", "Mikael Damsgaard", "Niklas Wykman", "Noria Manouchi", "Oliver Rosengren", "Olof Lavesson", "Oskar Svärd", "Peter Ollö©n", "Pö¥l Jonson", "Richard Herrey", "Saila Quicklund", "Sofia Arkelsten", "Sofia Fölster", "Sofia Westergren", "Sotiris Delis", "Stefan Olsson", "Sten Bergheden", "Thomas Finnborg", "Thomas Ragnarsson", "Tina Ghasemi Liljekvist", "Tomas Tobö©", "Ulf Kristersson", "Ulrik Nilsson", "Ulrika Heindorff", "Ulrika Jörgensen", "Ulrika Karlsson", "Viktor Wärnick", "ö…sa Coenraads"],
+    '2014–2018': ["Abdirizak Waberi", "Alexandra Anstrell", "Amir Adan", "Anders Hansson", "Andreas Norlö©n", "Anette ö…kesson", "Ann-Britt ö…sebol", "Ann-Charlotte Hammar Johnsson", "Ann-Sofie Alm", "Anna Kinberg Batra", "Anne Marie Brodö©n", "Annicka Engblom", "Anti Avsan", "Bengt-Anders Johansson", "Betty Malmberg", "Björn Leivik", "Boriana ö…berg", "Camilla Waltersson Grönvall", "Carl-Oskar Bohlin", "Catharina Elmsäter-Svärd", "Cecilia Magnusson", "Cecilia Widegren", "Cecilie Tenfjord Toftby", "Christer Akej", "Christian Holm Barenfeld", "Cristina Husmark Pehrsson", "Dag Klackenberg", "David Josefsson", "Edward Riedl", "Elisabeth Björnsdotter Rahm", "Elisabeth Svantesson", "Eliza Roszkowska ö–berg", "Ellen Juntti", "Erik Andersson", "Erik Bengtzboe", "Erik Ottoson", "Eva Bengtson", "Eva Lohman", "Ewa Björling", "Ewa Thalö©n Finnö©", "Finn Bengtsson", "Fredrik Reinfeldt", "Fredrik Schulte", "Gunilla Nordgren", "Gunnar Axö©n", "Gustaf Hoffstedt", "Gustav Blix", "Gustav Nilsson", "Göran Montan", "Göran Pettersson", "Hanif Bali", "Hans Rothenberg", "Hans Wallmark", "Helena Bouveng", "Henrik von Sydow", "Hillevi Engström", "Ida Drougge", "Isabella Hökmark", "Jan Ericson", "Jan R Andersson", "Jan-Evert Rö¥dhström", "Jenny Petersson", "Jesper Skalberg Karlsson", "Jessica Polfjärd", "Jessica Rosencrantz", "Jessika Roswall", "Johan Forssell", "Johan Hultberg", "Johan Johansson", "John E Weinerhall", "Jonas Jacobsson Gjörtler", "Josefin Malmqvist", "Jörgen Andersson", "Jörgen Berglund", "Jörgen Warborn", "Karin Enström", "Karl Sigfrid", "Katarina Brännström", "Kjell Jansson", "Krister Hammarbergh", "Kristina Axö©n Olin", "Lars Beckman", "Lars Elinderson", "Lars Hjälmered", "Lars Pö¼ss", "Lars-Arne Staxäng", "Lena Adelsohn Liljeroth", "Lena Asplund", "Linda Wemmert", "Lisbeth Sundö©n Andersson", "Lotta Finstorp", "Lotta Olsson", "Louise Meijer", "Margareta B Kjellin", "Margareta Cederfelt", "Maria Abrahamsson", "Maria Malmer Stenergard", "Maria Plass", "Maria Stockhaus", "Marie-Louise Hänel Sandström", "Marietta de Pourbaix-Lundin", "Marta Obminska", "Mats Green", "Mats Johansson", "Mattias Karlsson", "Metin Ataseven", "Michael Svensson", "Mikael Cederbratt", "Mikael Sandström", "Niklas Wykman", "Noria Manouchi", "Olof Lavesson", "Oskar ö–holm", "Per Bill", "Per Westerberg", "Peter Jutterström", "Pia Hallström", "Pö¥l Jonson", "Rune Wikström", "Saila Quicklund", "Sofia Arkelsten", "Sofia Fölster", "Sofia Westergren", "Sotiris Delis", "Staffan Anger", "Stefan Caplan", "Sten Bergheden", "Susanna Haby", "Thomas Finnborg", "Tina Ghasemi Liljekvist", "Tomas Tobö©", "Ulf Berg", "Ulf Kristersson", "Ulrik Nilsson", "Ulrika Heindorff", "Ulrika Jörgensen", "Ulrika Karlsson", "Viktor Wärnick", "Walburga Habsburg Douglas", "ö…sa Coenraads"],
+    '2010–2014': ["Abdirizak Waberi", "Amir Adan", "Anders Hansson", "Andreas Norlö©n", "Anette ö…kesson", "Ann-Britt ö…sebol", "Ann-Charlotte Hammar Johnsson", "Anna Kinberg Batra", "Anna König Jerlmyr", "Anna Lilliehöök", "Anna Tenje", "Anne Marie Brodö©n", "Anne-Marie Pö¥lsson", "Annicka Engblom", "Anti Avsan", "Bengt-Anders Johansson", "Bertil Kjellberg", "Betty Malmberg", "Björn Hamilton", "Björn Leivik", "Boriana ö…berg", "Camilla Waltersson Grönvall", "Carl-Oskar Bohlin", "Catharina Elmsäter-Svärd", "Cecilia Magnusson", "Cecilia Widegren", "Cecilie Tenfjord Toftby", "Christer Akej", "Christian Holm Barenfeld", "Christine Jönsson", "Cristina Husmark Pehrsson", "Edward Riedl", "Elisabeth Björnsdotter Rahm", "Elisabeth Svantesson", "Eliza Roszkowska ö–berg", "Ellen Juntti", "Erik Andersson", "Eva Bengtson", "Eva Lohman", "Ewa Björling", "Ewa Thalö©n Finnö©", "Finn Bengtsson", "Fredrik Reinfeldt", "Fredrik Schulte", "Gunilla Carlsson", "Gunilla Nordgren", "Gunnar Axö©n", "Gustaf Hoffstedt", "Gustav Blix", "Gustav Nilsson", "Göran Lennmarker", "Göran Lindblad", "Göran Montan", "Göran Pettersson", "HG Wessberg", "Hanif Bali", "Hans Rothenberg", "Hans Wallmark", "Helena Bouveng", "Helena Riviö¨re", "Henrik Ripa", "Henrik von Sydow", "Hillevi Engström", "Ida Drougge", "Inge Garstedt", "Inger Renö©", "Isabella Hökmark", "Jan Ericson", "Jan R Andersson", "Jan-Evert Rö¥dhström", "Jenny Petersson", "Jessica Polfjärd", "Jessica Rosencrantz", "Jessika Roswall", "Johan Forssell", "Johan Hultberg", "Johan Johansson", "Jonas Jacobsson Gjörtler", "Jörgen Andersson", "Jörgen Warborn", "Karin Enström", "Karl Sigfrid", "Katarina Brännström", "Kent Olsson", "Krister Hammarbergh", "Lars Beckman", "Lars Elinderson", "Lars Hjälmered", "Lars Lindblad", "Lars-Arne Staxäng", "Lena Adelsohn Liljeroth", "Lena Asplund", "Linda Wemmert", "Lisbeth Grönfeldt Bergman", "Lisbeth Sundö©n Andersson", "Lotta Finstorp", "Lotta Olsson", "Magdalena Andersson", "Malin Löfsjögö¥rd", "Margareta B Kjellin", "Margareta Cederfelt", "Margareta Pö¥lsson", "Maria Abrahamsson", "Maria Malmer Stenergard", "Maria Plass", "Maria Stockhaus", "Marianne Kierkemann", "Marie Weibull Kornias", "Marietta de Pourbaix-Lundin", "Marta Obminska", "Mats G Nilsson", "Mats Gerdau", "Mats Green", "Mats Johansson", "Mats Sander", "Metin Ataseven", "Michael Svensson", "Mikael Cederbratt", "Mikael Sandström", "Niklas Wykman", "Nils Oskar Nilsson", "Ola Sundell", "Olof Lavesson", "Oskar ö–holm", "Patrik Forslund", "Per Bill", "Per Westerberg", "Peter Jutterström", "Pia Hallström", "Reza Khelili Dylami", "Rolf Gunnarsson", "Rolf K Nilsson", "Rune Wikström", "Saila Quicklund", "Sofia Arkelsten", "Sofia Fölster", "Sotiris Delis", "Staffan Anger", "Stefan Caplan", "Sten Bergheden", "Sten Tolgfors", "Susanna Haby", "Sven Yngve Persson", "Thomas Finnborg", "Tina Ghasemi Liljekvist", "Tomas Tobö©", "Ulf Berg", "Ulf Grape", "Ulf Kristersson", "Ulrik Nilsson", "Ulrika Karlsson", "Walburga Habsburg Douglas", "ö…sa Coenraads", "ö…sa ö…gren Wikström"],
+    '2006–2010': ["Anders G Högmark", "Anders Hansson", "Andreas Norlö©n", "Anita Sidö©n", "Anna Kinberg Batra", "Anna König Jerlmyr", "Anna Lilliehöök", "Anna Lindgren", "Anna Tenje", "Anne Marie Brodö©n", "Anne-Marie Pö¥lsson", "Annicka Engblom", "Anti Avsan", "Bengt-Anders Johansson", "Bertil Kjellberg", "Betty Malmberg", "Björn Hamilton", "Björn Leivik", "Carl-Axel Roslund", "Carl-Erik Skö¥rman", "Catharina Elmsäter-Svärd", "Cecilia Magnusson", "Cecilia Widegren", "Cecilie Tenfjord Toftby", "Charlotte Nordström", "Christian Holm Barenfeld", "Christine Jönsson", "Cristina Husmark Pehrsson", "Elisabeth Svantesson", "Eliza Roszkowska ö–berg", "Elizabeth Nyström", "Eva Bengtson", "Ewa Björling", "Ewa Thalö©n Finnö©", "Fredrik Reinfeldt", "Fredrik Schulte", "Gunilla Carlsson", "Gunnar Axö©n", "Gustav Blix", "Gustav Nilsson", "Göran Lennmarker", "Göran Lindblad", "Göran Montan", "Göran Pettersson", "Hans Rothenberg", "Hans Wallmark", "Helena Bouveng", "Helena Riviö¨re", "Henrik S Järrel", "Henrik Westman", "Henrik von Sydow", "Hillevi Engström", "Inge Garstedt", "Inger Renö©", "Isabella Hökmark", "Jan Ericson", "Jan R Andersson", "Jan-Evert Rö¥dhström", "Jeppe Johnsson", "Jessica Polfjärd", "Johan Forssell", "Karin Enström", "Karl Sigfrid", "Katarina Brännström", "Kent Olsson", "Krister Hammarbergh", "Lars Elinderson", "Lars Hjälmered", "Lars Lindblad", "Lars-Arne Staxäng", "Lena Adelsohn Liljeroth", "Lena Asplund", "Lisbeth Grönfeldt Bergman", "Magdalena Andersson", "Margareta B Kjellin", "Margareta Pö¥lsson", "Maria Borelius", "Maria Plass", "Marianne Kierkemann", "Marie Weibull Kornias", "Marietta de Pourbaix-Lundin", "Mats G Nilsson", "Mats Gerdau", "Mats Johansson", "Mats Sander", "Maud Ekendahl", "Mikael Cederbratt", "Mikael Odenberg", "Mikael Rosö©n", "Mikael Sandström", "Nils Fredrik Aurelius", "Nils Oskar Nilsson", "Ola Sundell", "Olof Lavesson", "Patrik Forslund", "Patrik Norinder", "Per Bill", "Per Westerberg", "Peter Danielsson", "Reza Khelili Dylami", "Rolf Gunnarsson", "Rolf K Nilsson", "Rune Wikström", "Sebastian Cederschiöld", "Sofia Arkelsten", "Staffan Anger", "Stefan Hagfeldt", "Sten Bergheden", "Sten Nordin", "Sten Tolgfors", "Sven Yngve Persson", "Tomas Högström", "Tomas Tobö©", "Ulf Berg", "Ulf Grape", "Ulf Sjösten", "Ulla Löfgren", "Ulrika Karlsson", "Walburga Habsburg Douglas"],
+    '2002–2006': ["Anders G Högmark", "Anders Sjölund", "Anita Sidö©n", "Anna Kinberg Batra", "Anna Lilliehöök", "Anna Lindgren", "Anna ö…kerhielm", "Anne Marie Brodö©n", "Anne-Katrine Dunker", "Anne-Marie Pö¥lsson", "Bengt-Anders Johansson", "Berit Adolfsson", "Bertil Kjellberg", "Birgitta Wistrand", "Björn Hamilton", "Björn Leivik", "Bo Lundgren", "Carl Erik Hedlund", "Carl Fredrik Graf", "Carl G Nilsson", "Carl-Axel Roslund", "Carl-Erik Skö¥rman", "Catharina Elmsäter-Svärd", "Catharina Hagen", "Cecilia Magnusson", "Cecilia Widegren", "Chris Heister", "Cristina Husmark Pehrsson", "Elisabeth Fleetwood", "Elizabeth Nyström", "Ewa Björling", "Ewa Thalö©n Finnö©", "Fredrik Reinfeldt", "Gunilla Carlsson", "Gunnar Axö©n", "Gunnar Hökmark", "Göran Lennmarker", "Göran Lindblad", "Göte Jonsson", "Hans Hjortzberg-Nordlund", "Henrik Landerholm", "Henrik S Järrel", "Henrik Westman", "Henrik von Sydow", "Hillevi Engström", "Inger Renö©", "Ingvar Eriksson", "Jan Backman", "Jan-Evert Rö¥dhström", "Jeppe Johnsson", "Karin Enström", "Karin Falkmer", "Kent Olsson", "Knut Billing", "Krister Hammarbergh", "Lars Björkman", "Lars Elinderson", "Lars Hjertö©n", "Lars Lindblad", "Leif Carlson", "Lena Adelsohn Liljeroth", "Lennart Bolander", "Lennart Fridö©n", "Liselotte Wö¥gö", "Magdalena Andersson", "Margareta Cederfelt", "Margareta Nachmanson", "Margareta Pö¥lsson", "Margit Gennser", "Marietta de Pourbaix-Lundin", "Maud Ekendahl", "Mikael Odenberg", "Nils Fredrik Aurelius", "Ola Karlsson", "Ola Sundell", "Olle Lindström", "Patrik Norinder", "Per Bill", "Per Unckel", "Per Westerberg", "Peter Danielsson", "Petra Gardos", "Rolf Gunnarsson", "Roy Hansson", "Stefan Hagfeldt", "Sten Tolgfors", "Stig Rindborg", "Tom Heyman", "Tomas Högström", "Ulf Sjösten", "Ulla Löfgren"],
   },
   S: {
-    '2022–2026': ['Magdalena Andersson','Mikael Damberg','Annika Strandhäll','Morgan Johansson','Anna Ekström','Ardalan Shekarabi','Ibrahim Baylan','Märta Stenevi (MP-nära)','Lena Hallengren','Peter Hultqvist','Jennie Nilsson','Anders Ygeman','Matilda Ernkrans','Joakim Järlebark','Fredrik Olovsson','Nikos Papadopoulos','Laila Naraghi','Patrik Björck','Niklas Karlsson','Adnan Dibrani','Kurt Kvarnström','Johan Löfstrand','Phia Andersson','Anna-Carin Magnusson','Johan Büser','Eric Westroth','Sanna Backeskog','Kadir Kasirga','Teresa Carvalho','Ida Karkiainen','Åsa Eriksson','Rikard Larsson','Roger Haddad','Leif Nysmed','Sofie Eriksson','Johanna Haraldsson','Håkan Svenneling (V-nära)','Per-Arne Håkansson','Gunnar Axén (S)','Anna Wallentheim','Helen Fritzon','Eva Lindh','Ann-Christin Ahlberg','Kristina Nilsson','Karin Rågsjö (V-nära)','Shadiye Heydari','Azadeh Rojhan','Elin Lundgren','Laila Naraghi','Monica Haider','Jessica Rosencrantz (M-fd)','Lars Ahlenius','Håkan Juholt','Pia Nilsson','Jasenko Omanovic','Heléne Björklund','Peter Persson','Helén Pettersson','Gunnar Björk','Pernilla Stålhammar (MP-nära)','Johan Andersson','Pontus Schultz','Olle Thorell','Joakim Sandell','Malin Larsson','Hanna Westerén','Åsa Westlund','Carina Odebrink','Daniel Vencu Velasquez Castro','Christina Höj Larsen (V)','Alexandra Völker','Aylin Fazelian','Nour Melehi','Mirja Räihä','Anna Sibinska (MP-nära)','Marcus Wennerström','Rikard Warlenius','Emilia Töyrä','Katja Nyberg','Josefin Malmqvist (M)','Erica Nådin','Marianne Pettersson','Ingela Nylund Watz','Björn Wiechel','Laila Naraghi','Isak From','Sofia Amloh','Jamal Mouneimne','Anna-Belle Strömberg','Gulan Avci (L-nära)','Ingemar Nilsson','Sara Seppälä','Jan Ericson (M)','Catharina Bråkenhielm','Magnus Manhammar','Per Bolund (MP-nära)','Joar Forssell (L-nära)','Daniel Andersson','Hampus Hagman (M-nära)','Fredrik Christensson (C)','Ylva Johansson','Helena Vilhelmsson','Eva-Lena Jansson','Lotta Jonsson','Bo Broman','Maria Ferm (MP-nära)','Gustav Nilsson','Tobias Andersson (SD-nära)'],
-    '2018–2022': ['Stefan Löfven','Magdalena Andersson','Mikael Damberg','Annika Strandhäll','Morgan Johansson','Anna Ekström','Ardalan Shekarabi','Ibrahim Baylan','Lena Hallengren','Peter Hultqvist','Jennie Nilsson','Anders Ygeman','Matilda Ernkrans','Fredrik Olovsson','Nikos Papadopoulos','Laila Naraghi','Patrik Björck','Niklas Karlsson','Adnan Dibrani','Kurt Kvarnström','Johan Löfstrand','Phia Andersson','Anna-Carin Magnusson','Johan Büser','Sanna Backeskog','Kadir Kasirga','Teresa Carvalho','Ida Karkiainen','Åsa Eriksson','Rikard Larsson','Leif Nysmed','Sofie Eriksson','Johanna Haraldsson','Per-Arne Håkansson','Anna Wallentheim','Helen Fritzon','Eva Lindh','Ann-Christin Ahlberg','Kristina Nilsson','Shadiye Heydari','Azadeh Rojhan','Elin Lundgren','Monica Haider','Lars Ahlenius','Håkan Juholt','Pia Nilsson','Jasenko Omanovic','Heléne Björklund','Peter Persson','Helén Pettersson','Gunnar Björk','Johan Andersson','Olle Thorell','Joakim Sandell','Malin Larsson','Hanna Westerén','Åsa Westlund','Carina Odebrink','Daniel Vencu Velasquez Castro','Alexandra Völker','Aylin Fazelian','Nour Melehi','Mirja Räihä','Marcus Wennerström','Emilia Töyrä','Marianne Pettersson','Ingela Nylund Watz','Björn Wiechel','Isak From','Sofia Amloh','Jamal Mouneimne','Anna-Belle Strömberg','Ingemar Nilsson','Sara Seppälä','Catharina Bråkenhielm','Magnus Manhammar','Per Bolund (stöd)','Daniel Andersson','Eva-Lena Jansson','Lotta Jonsson','Bo Broman','Gustav Nilsson','Ylva Johansson','Helena Vilhelmsson','Jens Holm (V)','Emma Nohrén (MP)','Ingrid Burman','Wiwi-Anne Johansson','Håkan Svenneling','Lotta Hedström (MP)','Amineh Kakabaveh','Birgitta Ohlsson','Lena Rådström Baastad','Marie Granlund','Tony Haddou','Birgitta Eriksson','Jonas Sjöstedt (V)','Nooshi Dadgostar','Ali Esbati'],
-    '2014–2018': ['Stefan Löfven','Magdalena Andersson','Mikael Damberg','Annika Strandhäll','Morgan Johansson','Anna Ekström','Ardalan Shekarabi','Ibrahim Baylan','Lena Hallengren','Peter Hultqvist','Jennie Nilsson','Anders Ygeman','Matilda Ernkrans','Fredrik Olovsson','Nikos Papadopoulos','Laila Naraghi','Patrik Björck','Niklas Karlsson','Adnan Dibrani','Kurt Kvarnström','Johan Löfstrand','Phia Andersson','Anna-Carin Magnusson','Johan Büser','Sanna Backeskog','Kadir Kasirga','Teresa Carvalho','Ida Karkiainen','Åsa Eriksson','Rikard Larsson','Leif Nysmed','Sofie Eriksson','Johanna Haraldsson','Per-Arne Håkansson','Anna Wallentheim','Helen Fritzon','Eva Lindh','Ann-Christin Ahlberg','Kristina Nilsson','Shadiye Heydari','Elin Lundgren','Monica Haider','Lars Ahlenius','Håkan Juholt','Heléne Björklund','Peter Persson','Helén Pettersson','Johan Andersson','Olle Thorell','Malin Larsson','Hanna Westerén','Åsa Westlund','Carina Odebrink','Mirja Räihä','Marcus Wennerström','Emilia Töyrä','Marianne Pettersson','Ingela Nylund Watz','Björn Wiechel','Isak From','Sofia Amloh','Ingemar Nilsson','Sara Seppälä','Magnus Manhammar','Eva-Lena Jansson','Lotta Jonsson','Ylva Johansson','Helena Vilhelmsson','Marie Granlund','Tony Haddou','Birgitta Eriksson','Jonas Sjöstedt (V-stöd)','Nooshi Dadgostar','Ali Esbati','Wiwi-Anne Johansson','Håkan Svenneling','Amineh Kakabaveh','Lena Rådström Baastad','Teres Lindberg','Andreas Norlén','Sven-Erik Bucht','Anna-Lena Sörenson','Suzanne Svensson','Hannah Bergstedt','Anders Ahlgren','Kalle Larsson (V)','Birgitta Ohlsson','Maria Lundqvist-Brömster','Meeri Wasberg','Roza Güclü Hedin','Mattias Ottosson','Olle Felten','Gunnar Sandberg','Jabar Amin (MP)','Bo Bernhardsson','Ulla Andersson (V)','Maria Ferm (MP)','Jens Holm (V)','Per Bolund (MP)','Åsa Romson (MP)'],
-    '2010–2014': ['Håkan Juholt','Stefan Löfven','Magdalena Andersson','Mikael Damberg','Morgan Johansson','Ibrahim Baylan','Lena Hallengren','Peter Hultqvist','Anders Ygeman','Fredrik Olovsson','Nikos Papadopoulos','Laila Naraghi','Patrik Björck','Niklas Karlsson','Kurt Kvarnström','Johan Löfstrand','Phia Andersson','Kadir Kasirga','Teresa Carvalho','Åsa Eriksson','Leif Nysmed','Johanna Haraldsson','Per-Arne Håkansson','Anna Wallentheim','Helen Fritzon','Eva Lindh','Ann-Christin Ahlberg','Kristina Nilsson','Elin Lundgren','Monica Haider','Lars Ahlenius','Heléne Björklund','Peter Persson','Helén Pettersson','Johan Andersson','Olle Thorell','Malin Larsson','Hanna Westerén','Åsa Westlund','Carina Odebrink','Mirja Räihä','Marcus Wennerström','Marianne Pettersson','Ingela Nylund Watz','Björn Wiechel','Isak From','Ingemar Nilsson','Magnus Manhammar','Eva-Lena Jansson','Lotta Jonsson','Ylva Johansson','Helena Vilhelmsson','Marie Granlund','Birgitta Eriksson','Nooshi Dadgostar','Ali Esbati','Wiwi-Anne Johansson','Lena Rådström Baastad','Teres Lindberg','Andreas Norlén','Sven-Erik Bucht','Anna-Lena Sörenson','Suzanne Svensson','Hannah Bergstedt','Anders Ahlgren','Meeri Wasberg','Roza Güclü Hedin','Mattias Ottosson','Gunnar Sandberg','Bo Bernhardsson','Ulla Andersson (V)','Maria Ferm (MP)','Jens Holm (V)','Per Bolund (MP)','Carin Runeson','Siw Wittgren-Ahl','Shadiye Heydari','Yilmaz Kerimo','Ann-Kristine Johansson','Ingemar Josefsson','Jörgen Hellman','Tommy Waidelich','Christina Zedell','Jasenko Omanovic','Raimo Pärssinen','Rune Berglund','Lars Lilja','Sten Berglund','Anna Hagwall','Désirée Pethrus (KD)','Peter Jutterström','Solveig Zander (C)','Gunnar Andrén (FP)','Kerstin Haglö','Ann-Britt Åsebol (M)','Birgitta Ahlqvist','Lennart Axelsson','Mats Pertoft (MP)','Solveig Ternström','Jabar Amin (MP)','Tina Acketoft (FP)','Christina Höj Larsen (V)','Amineh Kakabaveh','Birgitta Ohlsson (FP)'],
+    '2022–2026': ["Adnan Dibrani", "Adrian Magnusson", "Agneta Nilsson", "Aida Birinxhiku", "Alexandra Völker", "Amalia Rud Stenlöf", "Anders Ygeman", "Anders ö–sterberg", "Ann-Christin Ahlberg", "Anna Johansson", "Anna Vikström", "Anna Wallentheim", "Anna-Belle Strömberg", "Anna-Caren Sätherberg", "Annelie Karlsson", "Annika Strandhäll", "Arber Gashi", "Ardalan Shekarabi", "Aylin Nouri", "Azadeh Rojhan", "Azra Muranovic", "Björn Wiechel", "Blö¥vitt Elofsson", "Carina Ohlsson", "Carina ö–debrink", "Caroline Helmersson Olsson", "Daniel Andersson", "Daniel Vencu ö–hrlund Castro", "Denis Begic", "Diana Laitinen Carlsson", "Dzenan Cisija", "Elin Lundgren", "Elsemarie Bjellqvist", "Emilia Töyrä", "Erik Ezelius", "Eva Lindh", "Ewa Pihl Krabbe", "Fredrik Lundh Sammeli", "Fredrik Olovsson", "Gunilla Carlsson", "Gunilla Svantorp", "Gustaf Lantz", "Hanna Westerö©n", "Hans Ekström", "Hans Hoff", "Helö©n Pettersson", "Helö©ne Björklund", "Hillevi Larsson", "Ida Ekeroth Clausson", "Ida Karkiainen", "Ilan De Basso", "Inga-Lill Sjöblom", "Ingela Nylund Watz", "Isak From", "Jasenko Omanovic", "Jennie Nilsson", "Jessica Rodö©n", "Joakim Järrebring", "Joakim Sandell", "Johan Andersson", "Johan Bö¼ser", "Johan Löfstrand", "Johanna Haraldsson", "Jonathan Svensson", "Jytte Guteland", "Kadir Kasirga", "Kalle Olsson", "Karin Engdahl", "Karin Sundin", "Kenneth G Forslund", "Kristina Nilsson", "Kristoffer Lindberg", "Laila Naraghi", "Lars Isacsson", "Lars Mejern Larsson", "Lawen Redar", "Leif Nysmed", "Lena Hallengren", "Lena Johansson", "Linnö©a Wickman", "Linus Sköld", "Louise Thunström", "Magdalena Andersson", "Magnus Manhammar", "Malin Larsson", "Maria Strömkvist", "Marianne Fundahn", "Marie Olsson", "Markus Kallifatides", "Markus Selin", "Marlene Burwick", "Mathias Tegnö©r", "Matilda Ernkrans", "Mats Wiking", "Mattias Jonsson", "Mattias Ottosson", "Mattias Vepsä", "Mikael Dahlqvist", "Mikael Damberg", "Mirja Räihä", "Monica Haider", "Morgan Johansson", "Niklas Karlsson", "Niklas Sigvardsson", "Ola Möller", "Olle Thorell", "Patrik Björck", "Patrik Lundqvist", "Paula Holmqvist", "Peder Björk", "Per-Arne Hö¥kansson", "Peter Hedberg", "Peter Hultqvist", "Petter Löberg", "Pia Nilsson", "Pyry Niemi", "Rikard Larsson", "Robert Olesen", "Rose-Marie Carlsson", "Roza Gö¼clö¼ Hedin", "Sanna Backeskog", "Sanne Lennström", "Serkan Köse", "Sofia Amloh", "Sofia Skönnbrink", "Sofie Eriksson", "Sultan Kayhan", "Teres Lindberg", "Teresa Carvalho", "Tomas Eneroth", "Tomas Kronstö¥hl", "Yasmine Bladelius", "Zara Leghissa", "ö…sa Eriksson", "ö…sa Karlsson", "ö…sa Lindestam", "ö…sa Westlund"],
+    '2018–2022': ["Adnan Dibrani", "Adrian Magnusson", "Agneta Gille", "Aida Birinxhiku", "Alexandra Völker", "Amalia Rud Stenlöf", "Anders Ygeman", "Anders ö–sterberg", "Ann-Christin Ahlberg", "Anna Johansson", "Anna Vikström", "Anna Wallentheim", "Anna Wallö©n", "Anna-Belle Strömberg", "Anna-Caren Sätherberg", "Anna-Lena Sörenson", "Annelie Karlsson", "Annika Strandhäll", "Ardalan Shekarabi", "Arhe Hamednaca", "Aylin Nouri", "Azadeh Rojhan", "Azra Muranovic", "Björn Wiechel", "Björn von Sydow", "Carina Ohlsson", "Carina ö–debrink", "Caroline Helmersson Olsson", "Catharina Brö¥kenhielm", "Dag Larsson", "Daniel Andersson", "Daniel Vencu ö–hrlund Castro", "Denis Begic", "Diana Laitinen Carlsson", "Dzenan Cisija", "Elin Lundgren", "Elsemarie Bjellqvist", "Emanuel ö–z", "Emilia Töyrä", "Erik Ezelius", "Eva Lindh", "Eva Sonidsson", "Eva-Lena Gustavsson", "Eva-Lena Jansson", "Ewa Pihl Krabbe", "Fredrik Lundh Sammeli", "Fredrik Olovsson", "Gunilla Carlsson", "Gunilla Svantorp", "Gustaf Lantz", "Hanna Westerö©n", "Hannah Bergstedt", "Hans Ekström", "Hans Hoff", "Helene Hellmark Knutsson", "Helene Petersson", "Helö©n Pettersson", "Helö©ne Björklund", "Hillevi Larsson", "Hö¥kan Bergman", "Ibrahim Baylan", "Ida Ekeroth Clausson", "Ida Karkiainen", "Ilan De Basso", "Inga-Lill Sjöblom", "Ingela Nylund Watz", "Ingemar Nilsson", "Isak From", "Jasenko Omanovic", "Jennie Nilsson", "Jessica Rodö©n", "Joakim Järrebring", "Joakim Sandell", "Johan Andersson", "Johan Bö¼ser", "Johan Löfstrand", "Johanna Haraldsson", "Jonas Gunnarsson", "Jytte Guteland", "Jörgen Hellman", "Kadir Kasirga", "Kalle Olsson", "Karin Engdahl", "Karin Sundin", "Katarina Köhler", "Kenneth G Forslund", "Kent Härstedt", "Kerstin Nilsson", "Krister ö–rnfjäder", "Kristina Nilsson", "Kristoffer Lindberg", "Laila Naraghi", "Lars Isacsson", "Lars Mejern Larsson", "Lawen Redar", "Leif Hö¥rd", "Leif Jakobsson", "Leif Nysmed", "Leif Pettersson", "Lena Emilsson", "Lena Hallengren", "Lena Johansson", "Lena Rö¥dström Baastad", "Lennart Axelsson", "Linnö©a Wickman", "Linus Sköld", "Louise Thunström", "Magdalena Andersson", "Magnus Manhammar", "Malin Larsson", "Maria Andersson Willner", "Maria Strömkvist", "Marianne Fundahn", "Marie Granlund", "Markus Kallifatides", "Markus Selin", "Marlene Burwick", "Mathias Tegnö©r", "Matilda Ernkrans", "Mats Wiking", "Mattias Jonsson", "Mattias Ottosson", "Mattias Vepsä", "Mikael Dahlqvist", "Mikael Damberg", "Mirja Räihä", "Monica Green", "Monica Haider", "Morgan Johansson", "Niklas Karlsson", "Niklas Sigvardsson", "Ola Möller", "Olle Thorell", "Patrik Björck", "Patrik Engström", "Patrik Lundqvist", "Paula Holmqvist", "Peder Björk", "Per-Arne Hö¥kansson", "Peter Hedberg", "Peter Hultqvist", "Peter Jeppsson", "Peter Johnsson", "Peter Persson", "Petra Ekerum", "Petter Löberg", "Phia Andersson", "Pia Nilsson", "Pyry Niemi", "Raimo Pärssinen", "Rikard Larsson", "Rose-Marie Carlsson", "Roza Gö¼clö¼ Hedin", "Sanna Backeskog", "Sanne Lennström", "Serkan Köse", "Sofia Amloh", "Sofia Skönnbrink", "Sofie Eriksson", "Stefan Löfven", "Sultan Kayhan", "Susanne Eberstein", "Suzanne Svensson", "Sven-Erik Bucht", "Teres Lindberg", "Teresa Carvalho", "Thomas Hammarberg", "Thomas Strand", "Tomas Eneroth", "Tomas Kronstö¥hl", "Urban Ahlin", "Veronica Lindholm", "Yasmine Bladelius", "Yilmaz Kerimo", "Ylva Johansson", "Zara Leghissa", "ö…sa Eriksson", "ö…sa Karlsson", "ö…sa Lindestam", "ö…sa Westlund"],
+    '2014–2018': ["Adnan Dibrani", "Agneta Gille", "Alexandra Völker", "Anders Karlsson", "Anders Ygeman", "Anders ö–sterberg", "Ann Arleklo", "Ann-Christin Ahlberg", "Ann-Kristine Johansson", "Anna Johansson", "Anna Wallentheim", "Anna Wallö©n", "Anna-Caren Sätherberg", "Anna-Lena Sörenson", "Annelie Karlsson", "Annika Strandhäll", "Ardalan Shekarabi", "Arhe Hamednaca", "Aylin Nouri", "Berit Högman", "Billy Gustafsson", "Björn Wiechel", "Björn von Sydow", "Bo Bernhardsson", "Börje Vestlund", "Carin Jämtin", "Carin Runeson", "Carina Adolfsson Elgestam", "Carina Hägg", "Carina Ohlsson", "Carina ö–debrink", "Caroline Helmersson Olsson", "Catharina Brö¥kenhielm", "Cecilia Dalman Eek", "Christer Adelsbo", "Christer Engelhardt", "Christina Oskarsson", "Christina Zedell", "ClasGöran Carlsson", "Dag Larsson", "Denis Begic", "Dö©sirö©e Liljevall", "Elin Lundgren", "Emanuel ö–z", "Emilia Töyrä", "Erik Ezelius", "Eva Lindh", "Eva Sonidsson", "Eva-Lena Gustavsson", "Eva-Lena Jansson", "Fredrik Lundh Sammeli", "Fredrik Olovsson", "Gabriel Wikström", "Gunilla Carlsson", "Gunilla Svantorp", "Gunnar Sandberg", "Hanna Westerö©n", "Hannah Bergstedt", "Hans Ekström", "Hans Hoff", "Hans Olsson", "Hans Unander", "Helene Hellmark Knutsson", "Helene Petersson", "Helö©n Pettersson", "Helö©ne Björklund", "Hillevi Larsson", "Hö¥kan Bergman", "Hö¥kan Juholt", "Ibrahim Baylan", "Ida Karkiainen", "Ingela Nylund Watz", "Ingemar Nilsson", "Isak From", "Jacob Sandgren", "Jan-Olof Larsson", "Jasenko Omanovic", "Jennie Nilsson", "Joakim Järrebring", "Joakim Sandell", "Johan Andersson", "Johan Bö¼ser", "Johan Löfstrand", "Johanna Haraldsson", "Jonas Gunnarsson", "Jörgen Hellman", "Kadir Kasirga", "Kalle Olsson", "Karin ö…ström", "Katarina Köhler", "Kenneth G Forslund", "Kent Härstedt", "Kerstin Engle", "Kerstin Haglö", "Kerstin Nilsson", "Krister ö–rnfjäder", "Kristina Nilsson", "Kurt Kvarnström", "Laila Naraghi", "Lars Eriksson", "Lars Johansson", "Lars Mejern Larsson", "Lawen Redar", "Leif Hö¥rd", "Leif Jakobsson", "Leif Nysmed", "Leif Pettersson", "Lena Emilsson", "Lena Hallengren", "Lena Rö¥dström Baastad", "Lennart Axelsson", "Louise Malmström", "Magdalena Andersson", "Magnus Manhammar", "Malin Larsson", "Maria Andersson Willner", "Maria Stenberg", "Maria Strömkvist", "Marianne Fundahn", "Marie Granlund", "Marie Nordö©n", "Marlene Burwick", "Mathias Tegnö©r", "Matilda Ernkrans", "Mats Wiking", "Mattias Jonsson", "Mattias Ottosson", "Meeri Wasberg", "Mikael Dahlqvist", "Mikael Damberg", "Monica Green", "Monica Haider", "Morgan Johansson", "Niklas Karlsson", "Ola Möller", "Olle Thorell", "Patrik Björck", "Patrik Engström", "Patrik Lundqvist", "Paula Holmqvist", "Per Svedberg", "Per-Arne Hö¥kansson", "Peter Hultqvist", "Peter Jeppsson", "Peter Johnsson", "Peter Persson", "Petra Ekerum", "Petter Löberg", "Phia Andersson", "Pia Nilsson", "Pyry Niemi", "Raimo Pärssinen", "Rikard Larsson", "Roger Lamell", "Roza Gö¼clö¼ Hedin", "Sanne Lennström", "Sara Karlsson", "Serkan Köse", "Shadiye Heydari", "Stefan Löfven", "Susanne Eberstein", "Suzanne Svensson", "Sven-Erik Bucht", "Teres Lindberg", "Teresa Carvalho", "Thomas Strand", "Tomas Eneroth", "Tomas Kronstö¥hl", "Tommy Waidelich", "Urban Ahlin", "Veronica Lindholm", "Veronica Palm", "Yasmine Bladelius", "Yilmaz Kerimo", "Ylva Johansson", "ö…sa Eriksson", "ö…sa Karlsson", "ö…sa Lindestam", "ö…sa Westlund"],
+    '2010–2014': ["Adnan Dibrani", "Agneta Gille", "Agneta Lundberg", "Aleksander Gabelic", "Alexandra Völker", "Alf Eriksson", "Ameer Sachet", "Anders Karlsson", "Anders Ygeman", "Ann Arleklo", "Ann-Christin Ahlberg", "Ann-Kristine Johansson", "Anna Johansson", "Anna Wallentheim", "Anna Wallö©n", "Anna-Caren Sätherberg", "Anna-Lena Sörenson", "Anne Ludvigsson", "Anneli Särnblad", "Annelie Karlsson", "Ardalan Shekarabi", "Arhe Hamednaca", "Berit Andnor", "Berit Högman", "Billy Gustafsson", "Birgitta Eriksson", "Björn Wiechel", "Björn von Sydow", "Bo Bernhardsson", "Bosse Ringholm", "Britta Rö¥dström", "Börje Vestlund", "Carin Jämtin", "Carin Runeson", "Carina Adolfsson Elgestam", "Carina Hägg", "Carina Moberg", "Carina Ohlsson", "Caroline Helmersson Olsson", "Catharina Brö¥kenhielm", "Cecilia Dalman Eek", "Christer Adelsbo", "Christer Engelhardt", "Christin Hagberg", "Christina Axelsson", "Christina Oskarsson", "Christina Zedell", "Claes-Göran Brandin", "ClasGöran Carlsson", "Dö©sirö©e Liljevall", "Elin Lundgren", "Elisebeht Markström", "Emanuel ö–z", "Emilia Töyrä", "Eva Sonidsson", "Eva-Lena Jansson", "Fredrik Lundh Sammeli", "Fredrik Olovsson", "Gunilla Carlsson", "Gunilla Svantorp", "Gunnar Sandberg", "Göran S Persson", "Göte Wahlström", "Hannah Bergstedt", "Hans Ekström", "Hans Hoff", "Hans Olsson", "Hans Stenberg", "Hans Unander", "Helene Petersson", "Helö©n Pettersson", "Hillevi Larsson", "Hö¥kan Bergman", "Hö¥kan Juholt", "Ibrahim Baylan", "Ingela Nylund Watz", "Ingemar Nilsson", "Inger Jarl Beck", "Isak From", "Jan Björkman", "Jan Emanuel Johansson", "Jan-Olof Larsson", "Jasenko Omanovic", "Jennie Nilsson", "Johan Andersson", "Johan Bö¼ser", "Johan Löfstrand", "Johanna Haraldsson", "Jonas Gunnarsson", "Jörgen Hellman", "Kalle Olsson", "Karin ö…ström", "Karl Gustav Abramsson", "Katarina Köhler", "Kenneth G Forslund", "Kent Härstedt", "Kerstin Engle", "Kerstin Haglö", "Kerstin Nilsson", "Krister ö–rnfjäder", "Kristina Nilsson", "Kristina Zakrisson", "Kurt Kvarnström", "Laila Bjurling", "Lars Eriksson", "Lars Johansson", "Lars Lilja", "Lars Mejern Larsson", "Lars U Granberg", "Lars Wegendal", "Leif Jakobsson", "Leif Nysmed", "Leif Pagrotsky", "Leif Pettersson", "Lena Emilsson", "Lena Hallengren", "Lena Sommestad", "Lennart Axelsson", "Louise Malmström", "Luciano Astudillo", "Magdalena Andersson", "Magdalena Streijffert", "Magnus Manhammar", "Margareta Israelsson", "Margareta Persson", "Maria Andersson Willner", "Maria Stenberg", "Maria Strömkvist", "Marie Granlund", "Marie Nordö©n", "Marina Pettersson", "Maryam Yazdanfar", "Matilda Ernkrans", "Mats Berglind", "Mattias Jonsson", "Mattias Ottosson", "Meeri Wasberg", "Michael Hagberg", "Mikael Dahlqvist", "Mikael Damberg", "Monica Green", "Monica Haider", "Morgan Johansson", "Niklas Karlsson", "Nikos Papadopoulos", "Olle Thorell", "Patrik Björck", "Patrik Lundqvist", "Paula Holmqvist", "Per Svedberg", "Per-Arne Hö¥kansson", "Peter Hultqvist", "Peter Jeppsson", "Peter Johnsson", "Peter Persson", "Petter Löberg", "Phia Andersson", "Pia Nilsson", "Pyry Niemi", "Raimo Pärssinen", "Renö©e Jeryd", "Rikard Larsson", "Roger Lamell", "Roland Bäckman", "Ronny Olander", "Roza Gö¼clö¼ Hedin", "Sara Karlsson", "Shadiye Heydari", "Sinikka Bohlin", "Siw Wittgren-Ahl", "Sonia Karlsson", "Stefan Löfven", "Susanne Eberstein", "Suzanne Svensson", "Sven-Erik Bucht", "Sven-Erik ö–sterberg", "Sylvia Lindgren", "Teres Lindberg", "Teresa Carvalho", "Thomas Bodström", "Thomas Strand", "Thomas ö–stros", "Tomas Eneroth", "Tommy Ternemar", "Tommy Waidelich", "Tone Tingsgö¥rd", "Urban Ahlin", "Veronica Lindholm", "Veronica Palm", "Yasmine Bladelius", "Yilmaz Kerimo", "Ylva Johansson", "ö…sa Lindestam", "ö…sa Westlund"],
+    '2006–2010': ["Agneta Gille", "Agneta Lundberg", "Agneta Ringman", "Aleksander Gabelic", "Alf Eriksson", "Ameer Sachet", "Anders Bengtsson", "Anders Karlsson", "Anders Ygeman", "Anita Johansson", "Anita Jönsson", "Ann Arleklo", "Ann-Christin Ahlberg", "Ann-Kristine Johansson", "Ann-Marie Fagerström", "Anne Ludvigsson", "Anneli Särnblad", "Annika Nilsson", "Arne Kjörnsberg", "Barbro Hietala Nordlund", "Berit Andnor", "Berit Högman", "Berndt Ekholm", "Billy Gustafsson", "Birgitta Ahlqvist", "Birgitta Eriksson", "Björn von Sydow", "Bo Bernhardsson", "Bosse Ringholm", "Britt Bohlin Olsson", "Britt Olauson", "Britt-Marie Lindkvist", "Britta Rö¥dström", "Börje Vestlund", "Carin Jämtin", "Carin Lundberg", "Carin Runeson", "Carina Adolfsson Elgestam", "Carina Hägg", "Carina Moberg", "Carina Ohlsson", "Caroline Helmersson Olsson", "Catharina Brö¥kenhielm", "Catherine Persson", "Christer Adelsbo", "Christer Engelhardt", "Christer Skoog", "Christin Hagberg", "Christina Axelsson", "Christina Oskarsson", "Christina Zedell", "Cinnika Beiming", "Claes-Göran Brandin", "Conny ö–hman", "Dö©sirö©e Liljevall", "Elisebeht Markström", "Eva Arvidsson", "Eva Sonidsson", "Eva-Lena Jansson", "Fredrik Lundh Sammeli", "Fredrik Olovsson", "Gunilla Carlsson", "Gunnar Sandberg", "Göran Magnusson", "Göran Norlander", "Göran S Persson", "Göte Wahlström", "Hans Hoff", "Hans Olsson", "Hans Stenberg", "Hans Unander", "Helena Frisk", "Helene Petersson", "Helö©n Pettersson", "Hillevi Larsson", "Hö¥kan Juholt", "Ibrahim Baylan", "Inger Jarl Beck", "Inger Nordlander", "Jan Björkman", "Jan Emanuel Johansson", "Jan-Olof Larsson", "Jarl Lander", "Jasenko Omanovic", "Jennie Nilsson", "Joe Frans", "Johan Löfstrand", "Jörgen Hellman", "Karin ö…ström", "Karl Gustav Abramsson", "Kenneth G Forslund", "Kent Härstedt", "Kerstin Engle", "Kerstin Haglö", "Kerstin Kristiansson Karlstedt", "Kjell Nordström", "Krister ö–rnfjäder", "Kristina Zakrisson", "Kurt Kvarnström", "Laila Bjurling", "Lars Johansson", "Lars Lilja", "Lars Mejern Larsson", "Lars U Granberg", "Lars Wegendal", "Leif Jakobsson", "Leif Pagrotsky", "Leif Pettersson", "Lena Hallengren", "Lennart Axelsson", "Lennart Klockare", "Lennart Nilsson", "Lilian Virgin", "Louise Malmström", "Luciano Astudillo", "Magdalena Streijffert", "Margareta Israelsson", "Margareta Persson", "Maria Hassan", "Maria Stenberg", "Mariann Ytterberg", "Marianne Carlström", "Marie Granlund", "Marie Nordö©n", "Marina Pettersson", "Marita Ulvskog", "Martin Nilsson", "Maryam Yazdanfar", "Matilda Ernkrans", "Mats Berglind", "Michael Hagberg", "Mikael Damberg", "Mona Berglund Nilsson", "Monica Green", "Morgan Johansson", "Nikos Papadopoulos", "Nils-Erik Söderqvist", "Nils-Göran Holmqvist", "Ola Rask", "Olle Thorell", "Paavo Vallius", "Patrik Björck", "Per Erik Granström", "Per Svedberg", "Per-Olof Svensson", "Peter Hultqvist", "Peter Jeppsson", "Peter Johnsson", "Phia Andersson", "Pia Nilsson", "Pär Axel Sahlberg", "Pär Nuder", "Raimo Pärssinen", "Renö©e Jeryd", "Reynoldh Furustrand", "Roland Bäckman", "Ronny Olander", "Rune Berglund", "Sinikka Bohlin", "Siw Wittgren-Ahl", "Sonia Karlsson", "Susanne Eberstein", "Sven-Erik ö–sterberg", "Sylvia Lindgren", "Sören Wibe", "Thomas Bodström", "Thomas Strand", "Thomas ö–stros", "Tomas Eneroth", "Tommy Ternemar", "Tommy Waidelich", "Tone Tingsgö¥rd", "Ulla Wester", "Ulrica Messing", "Urban Ahlin", "Veronica Palm", "Yilmaz Kerimo", "Ylva Johansson", "ö…sa Lindestam"],
+    '2002–2006': ["Agneta Brendt", "Agneta Gille", "Agneta Lundberg", "Agneta Ringman", "Alf Eriksson", "Anders Bengtsson", "Anders Karlsson", "Anders Sundström", "Anders Ygeman", "Anita Johansson", "Anita Jönsson", "Ann-Christin Ahlberg", "Ann-Kristine Johansson", "Ann-Marie Fagerström", "Anne Ludvigsson", "Anneli Särnblad", "Annika Nilsson", "Arne Kjörnsberg", "Barbro Andersson ö–hrn", "Barbro Hietala Nordlund", "Bengt Niska", "Bengt Silfverstrand", "Bengt-Ola Ryttar", "Berit Andnor", "Berit Högman", "Berndt Ekholm", "Berndt Sköldestig", "Billy Gustafsson", "Birgitta Ahlqvist", "Björn Rosengren", "Björn von Sydow", "Bo Bernhardsson", "Bosse Ringholm", "Britt Bohlin Olsson", "Britt Olauson", "Britt-Marie Lindkvist", "Britta Rö¥dström", "Börje Vestlund", "Carin Lundberg", "Carina Adolfsson Elgestam", "Carina Hägg", "Carina Moberg", "Carina Ohlsson", "Catharina Brö¥kenhielm", "Catherine Persson", "Christer Adelsbo", "Christer Engelhardt", "Christer Skoog", "Christin Hagberg", "Christina Axelsson", "Christina Oskarsson", "Cinnika Beiming", "Claes-Göran Brandin", "Conny ö–hman", "Elisebeht Markström", "Eva Arvidsson", "Eva Johansson", "Fredrik Olovsson", "Gunilla Carlsson", "Gunnar Sandberg", "Göran Magnusson", "Göran Norlander", "Göran S Persson", "Göte Wahlström", "Hans Hoff", "Hans Stenberg", "Helena Frisk", "Helene Petersson", "Hillevi Larsson", "Hö¥kan Juholt", "Inge Carlsson", "Ingela Thalö©n", "Ingemar Josefsson", "Inger Lundberg", "Inger Nordlander", "Inger Segelström", "Ingvar Johnsson", "Jan Bergqvist", "Jan Björkman", "Jan Emanuel Johansson", "Jan-Olof Larsson", "Jarl Lander", "Joe Frans", "Johan Löfstrand", "Kaj Larsson", "Karin Wegestö¥l", "Karin ö…ström", "Karl Gustav Abramsson", "Kenneth G Forslund", "Kent Härstedt", "Kerstin Engle", "Kerstin Haglö", "Kerstin Kristiansson Karlstedt", "Kjell Nordström", "Krister ö–rnfjäder", "Kristina Zakrisson", "Kurt Kvarnström", "Laila Bjurling", "Lars Engqvist", "Lars Johansson", "Lars Lilja", "Lars Mejern Larsson", "Lars U Granberg", "Lars Wegendal", "Lars-Erik Lövdö©n", "Leif Jakobsson", "Leif Pagrotsky", "Lena Hjelm-Wallö©n", "Lena Sandlin-Hedman", "Lennart Axelsson", "Lennart Klockare", "Lennart Nilsson", "Lilian Virgin", "Lisbet Calner", "Lisbeth Staaf-Igelström", "Louise Malmström", "Maj-Inger Klingvall", "Margareta Israelsson", "Margareta Persson", "Margareta Winberg", "Maria Hassan", "Maria Stenberg", "Mariann Ytterberg", "Marianne Carlström", "Marianne Nilsson", "Marie Granlund", "Marie-Louise Rönnmark", "Marina Pettersson", "Marita Ulvskog", "Martin Nilsson", "Matilda Ernkrans", "Mats Berglind", "Maud Björnemalm", "Michael Hagberg", "Mikael Damberg", "Mona Berglund Nilsson", "Monica Green", "Morgan Johansson", "Märta Johansson", "Nalin Pekgul", "Nikos Papadopoulos", "Nils-Erik Söderqvist", "Nils-Göran Holmqvist", "Ola Rask", "Paavo Vallius", "Per Erik Granström", "Per-Olof Svensson", "Peter Johnsson", "Pär Axel Sahlberg", "Pär Nuder", "Raimo Pärssinen", "Reynoldh Furustrand", "Ronny Olander", "Rune Berglund", "Sinikka Bohlin", "Siw Wittgren-Ahl", "Sonia Karlsson", "Sonja Fransson", "Susanne Eberstein", "Sven Hulterström", "Sven-Erik ö–sterberg", "Sylvia Lindgren", "Sören Lekberg", "Sören Wibe", "Thomas Bodström", "Thomas ö–stros", "Tomas Eneroth", "Tommy Ternemar", "Tommy Waidelich", "Tone Tingsgö¥rd", "Torgny Danielsson", "Tullia von Sydow", "Ulla Wester", "Ulrica Messing", "Urban Ahlin", "Veronica Palm", "Yilmaz Kerimo", "ö…ke Gustavsson", "ö…sa Lindestam"],
   },
   V: {
-    '2022–2026': ['Nooshi Dadgostar','Ulla Andersson','Jens Holm','Ali Esbati','Wiwi-Anne Johansson','Håkan Svenneling','Kalle Larsson','Tony Haddou','Birgitta Eriksson','Amineh Kakabaveh','Christina Höj Larsen','Lorena Delgado Varas','Jessica Wetterling','Maj Karlsson','Ida Gabrielsson','Ciczie Weidby','Linda Westerlund Snecker','Jon Thorbjörnson','Vasiliki Tsouplaki','Yasmine Posio','Hanna Gunnarsson','Gudrun Nordborg','Eric Strand','Björn Söder (SD-fd)'],
-    '2018–2022': ['Jonas Sjöstedt','Nooshi Dadgostar','Ulla Andersson','Jens Holm','Ali Esbati','Wiwi-Anne Johansson','Håkan Svenneling','Kalle Larsson','Tony Haddou','Birgitta Eriksson','Amineh Kakabaveh','Christina Höj Larsen','Lorena Delgado Varas','Jessica Wetterling','Maj Karlsson','Ida Gabrielsson','Ciczie Weidby','Linda Westerlund Snecker','Jon Thorbjörnson','Vasiliki Tsouplaki','Yasmine Posio','Hanna Gunnarsson','Gudrun Nordborg','Eric Strand','Birgitta Ohlsson (FP/stöd)','Lotta Hedström','Emma Nohrén','Per Bolund','Åsa Romson'],
-    '2014–2018': ['Jonas Sjöstedt','Ulla Andersson','Jens Holm','Ali Esbati','Wiwi-Anne Johansson','Håkan Svenneling','Kalle Larsson','Amineh Kakabaveh','Christina Höj Larsen','Jessica Wetterling','Maj Karlsson','Ida Gabrielsson','Ciczie Weidby','Linda Westerlund Snecker','Jon Thorbjörnson','Vasiliki Tsouplaki','Yasmine Posio','Hanna Gunnarsson','Gudrun Nordborg','Eric Strand','Daniel Sestrajcic'],
-    '2010–2014': ['Lars Ohly','Jonas Sjöstedt','Ulla Andersson','Jens Holm','Ali Esbati','Wiwi-Anne Johansson','Amineh Kakabaveh','Christina Höj Larsen','Jessica Wetterling','Maj Karlsson','Ciczie Weidby','Linda Westerlund Snecker','Vasiliki Tsouplaki','Yasmine Posio','Hanna Gunnarsson','Gudrun Nordborg','Eric Strand','Daniel Sestrajcic','Hans Linde'],
-    '2006–2010': ['Lars Ohly','Ulla Andersson','Jens Holm','Wiwi-Anne Johansson','Amineh Kakabaveh','Christina Höj Larsen','Peter Pedersen','LiseLotte Olsson','Jacob Johnson','Johan Löfstrand (S-fd)','Kent Persson','Elina Linna','Torbjörn Björlund','Marianne Berg','Hans Linde','Kent Härstedt','Max Andersson','Eva Olofsson','Rossana Dinamarca','Siv Holma','Gunilla Wahlén','Josefin Brink'],
-    '2002–2006': ['Gudrun Schyman','Lars Ohly','Ulla Andersson','Jens Holm','Wiwi-Anne Johansson','Amineh Kakabaveh','Christina Höj Larsen','Peter Pedersen','LiseLotte Olsson','Jacob Johnson','Kent Persson','Elina Linna','Torbjörn Björlund','Marianne Berg','Hans Linde','Max Andersson','Eva Olofsson','Rossana Dinamarca','Siv Holma','Gunilla Wahlén','Josefin Brink','Johan Löfstrand','Rolf Olsson','Alice Åström','Charlotta Svanberg','Camilla Sköld Jansson','Mats Einarsson','Lena Olsson','Per Rosengren'],
-  }
+    '2022–2026': ["Ali Esbati", "Andrea Andersson Tay", "Andreas Lennkvist Manriquez", "Birger Lahti", "Christina Höj Larsen", "Ciczie Weidby", "Elin Segerlind", "Gudrun Nordborg", "Hanna Gunnarsson", "Hö¥kan Svenneling", "Ida Gabrielsson", "Ilona Szatmö¡ri Waldau", "Isabell Mixter", "Jens Holm", "Jessica Thunander", "Jessica Wetterling", "Jon Thorbjörnson", "Kajsa Fredholm", "Karin Rö¥gsjö", "Linda W Snecker", "Lotta Johnsson Fornarve", "Maj Karlsson", "Malin ö–sth", "Mia Sydow Mölleby", "Nadja Awad", "Nooshi Dadgostar", "Samuel Gonzalez Westling", "Tony Haddou", "Ulla Andersson", "Vasiliki Tsouplaki", "Yasmine Posio"],
+    '2018–2022': ["Ali Esbati", "Andrea Andersson Tay", "Birger Lahti", "Christina Höj Larsen", "Ciczie Weidby", "Elin Segerlind", "Gudrun Nordborg", "Hamza Demir", "Hanna Gunnarsson", "Hö¥kan Svenneling", "Ida Gabrielsson", "Ilona Szatmö¡ri Waldau", "Isabell Mixter", "Jeannette Escanilla", "Jens Holm", "Jessica Thunander", "Jessica Wetterling", "Jon Thorbjörnson", "Jonas Sjöstedt", "Kajsa Fredholm", "Karin Rö¥gsjö", "Linda W Snecker", "Lotta Johnsson Fornarve", "Maj Karlsson", "Mia Sydow Mölleby", "Nadja Awad", "Nooshi Dadgostar", "Rossana Dinamarca", "Samuel Gonzalez Westling", "Tony Haddou", "Ulla Andersson", "Vasiliki Tsouplaki", "Yasmine Posio"],
+    '2014–2018': ["Ali Esbati", "Bengt Berg", "Birger Lahti", "Christina Höj Larsen", "Ciczie Weidby", "Daniel Sestrajcic", "Elin Segerlind", "Emma Wallrup", "Eva Olofsson", "Hamza Demir", "Hanna Gunnarsson", "Hans Linde", "Hö¥kan Svenneling", "Ida Gabrielsson", "Ilona Szatmö¡ri Waldau", "Jeannette Escanilla", "Jens Holm", "Jessica Thunander", "Jessica Wetterling", "Jon Thorbjörnson", "Jonas Sjöstedt", "Josefin Brink", "Karin Rö¥gsjö", "Kent Persson", "Lars Ohly", "Lena Olsson", "Linda W Snecker", "Lotta Johnsson Fornarve", "Maj Karlsson", "Marianne Berg", "Mia Sydow Mölleby", "Nooshi Dadgostar", "Rossana Dinamarca", "Siv Holma", "Stig Henriksson", "Tony Haddou", "Torbjörn Björlund", "Ulla Andersson", "Vasiliki Tsouplaki", "Wiwi-Anne Johansson", "Yasmine Posio"],
+    '2010–2014': ["Ali Esbati", "Alice ö…ström", "Bengt Berg", "Birger Lahti", "Christina Höj Larsen", "Daniel Sestrajcic", "Egon Frid", "Elina Linna", "Emma Wallrup", "Eva Olofsson", "Gunilla Wahlö©n", "Hans Linde", "Hö¥kan Svenneling", "Jacob Johnson", "Jens Holm", "Jonas Sjöstedt", "Josefin Brink", "Kalle Larsson", "Karin Rö¥gsjö", "Kent Persson", "Lars Ohly", "Lena Olsson", "Linda W Snecker", "LiseLotte Olsson", "Lotta Johnsson Fornarve", "Maj Karlsson", "Marianne Berg", "Marie Engström", "Mia Sydow Mölleby", "Nooshi Dadgostar", "Peter Pedersen", "Rossana Dinamarca", "Siv Holma", "Stig Henriksson", "Torbjörn Björlund", "Ulla Andersson", "Wiwi-Anne Johansson"],
+    '2006–2010': ["Alice ö…ström", "Anders Wiklund", "Berit Jö³hannesson", "Britt-Marie Danestig", "Camilla Sköld Jansson", "Egon Frid", "Elina Linna", "Eva Olofsson", "Gunilla Wahlö©n", "Hans Linde", "Ingrid Burman", "Jacob Johnson", "Josefin Brink", "Kalle Larsson", "Karin Thorborg", "Kent Persson", "Kjell-Erik Karlsson", "Lars Bäckström", "Lars Ohly", "Lena Olsson", "Lennart Beijer", "Lennart Gustavsson", "LiseLotte Olsson", "Marianne Berg", "Marie Engström", "Mats Einarsson", "Owe Hellberg", "Per Rosengren", "Pernilla Zethraeus", "Peter Pedersen", "Rolf Olsson", "Rossana Dinamarca", "Sermin ö–zö¼rkö¼t", "Siv Holma", "Sten Lundström", "Sven-Erik Sjöstrand", "Tasso Stafilidis", "Torbjörn Björlund", "Ulla Andersson", "Ulla Hoffmann", "Wiwi-Anne Johansson"],
+    '2002–2006': ["Alice ö…ström", "Anders Wiklund", "Berit Jö³hannesson", "Boel Lindö©n", "Britt-Marie Danestig", "Camilla Sköld Jansson", "Carlinge Wisberg", "Charlotta L Bjälkebring", "Claes Stockhaus", "Elina Linna", "Eva Zetterberg", "Gunilla Wahlö©n", "Hans Andersson", "Ingrid Burman", "Johan Lönnroth", "Jonas Ringqvist", "Kalle Larsson", "Karin Thorborg", "Kenneth Kvist", "Kjell-Erik Karlsson", "Lars Bäckström", "Lars Ohly", "Lena Olsson", "Lennart Beijer", "Lennart Gustavsson", "Lennart Värmby", "Marie Engström", "Mats Einarsson", "Murad Artin", "Owe Hellberg", "Per Rosengren", "Peter Pedersen", "Rolf Olsson", "Rossana Dinamarca", "Sermin ö–zö¼rkö¼t", "Siv Holma", "Sten Lundström", "Stig Eriksson", "Stig Henriksson", "Stig Sandström", "Sture Arnesson", "Sven-Erik Sjöstrand", "Tanja Linderborg", "Tasso Stafilidis", "Ulla Hoffmann", "Willy Söderdahl", "Yvonne Oscarsson"],
+  },
+  SD: {
+    '2022–2026': ["Adam Marttinen", "Alexander Christiansson", "Anders Alftberg", "Angelica Lundberg", "Angelika Bengtsson", "Ann-Christine Frohm", "Anna-Lena Hedberg", "Anne Oskarsson", "Aron Emilsson", "Beatrice Timgren", "Björn Söder", "Björn Tidland", "Bo Broman", "Carina Stö¥hl Herrstedt", "Carita Boulwö©n", "Caroline Nordengrip", "Cassandra Sundin", "Charlotte Quensel", "Chris Dahlqvist", "Christian Lindefjärd", "Christina Tapper ö–stberg", "Clara Aranda", "Daniel Persson", "Daniel Spiik", "David Lö¥ng", "David Perez", "Dennis Dioukarev", "Eric Palmqvist", "Eric Westroth", "Erik Hellsborn", "Fredrik Lindahl", "Gabriel Kroon", "Göran Hargestam", "Henrik Vinge", "Jennie ö…feldt", "Jessica Stegrud", "Jimmie ö…kesson", "Jimmy Stö¥hl", "Johnny Skalin", "Johnny Svedin", "Jonas Andersson", "Josef Fransson", "Julia Kronlid", "Jörgen Grubb", "Kent Kumpula", "Lars Andersson", "Lars Wistedt", "Leonid Yurkovskiy", "Linda Lindberg", "Ludvig Aspling", "Magnus Persson", "Markus Wiechel", "Martin Kinnunen", "Martin Westmont", "Matheus Enholm", "Mats Arkhem", "Mats Hellhoff", "Mats Nordberg", "Mattias Bäckström Johansson", "Mattias Eriksson Falk", "Mattias Karlsson", "Michael Rubbestad", "Mikael Eskilandersson", "Mikael Strandman", "Mona Olin", "Msciwoj Swigon", "Nima Gholam Ali Pour", "Oscar Sjöstedt", "Patrick Reslow", "Patrik Jönsson", "Per Ramhorn", "Per Söderlund", "Pia Trollehjelm", "Pontus Andersson Garpvall", "Rashid Farivar", "Rasmus Giertz", "Richard Jomshof", "Robert Stenkvist", "Roger Hedlund", "Runar Filper", "Sara Gille", "Staffan Eklöf", "Sven-Olof Sällström", "Thomas Morell", "Tobias Andersson", "Ulf Lindholm", "Victoria Tiblom", "Yasmine Eriksson"],
+    '2018–2022': ["Adam Marttinen", "Alexander Christiansson", "Anders Alftberg", "Angelica Lundberg", "Angelika Bengtsson", "Ann-Christine Frohm", "Anna-Lena Hedberg", "Anne Oskarsson", "Aron Emilsson", "Beatrice Timgren", "Björn Söder", "Björn Tidland", "Bo Broman", "Carina Stö¥hl Herrstedt", "Carita Boulwö©n", "Caroline Nordengrip", "Cassandra Sundin", "Charlotte Quensel", "Christina Tapper ö–stberg", "Clara Aranda", "Daniel Persson", "David Lö¥ng", "David Perez", "Dennis Dioukarev", "Ebba Hermansson", "Eric Palmqvist", "Eric Westroth", "Erik Hellsborn", "Fredrik Eriksson", "Fredrik Lindahl", "Gabriel Kroon", "Heidi Karlsson", "Henrik Vinge", "Jennie ö…feldt", "Jessica Stegrud", "Jimmie ö…kesson", "Jimmy Stö¥hl", "Johan Nissinen", "Johnny Skalin", "Johnny Svedin", "Jonas Andersson", "Jonas Millard", "Jonas ö…kerlund", "Josef Fransson", "Julia Kronlid", "Jörgen Grubb", "Kent Ekeroth", "Lars Andersson", "Lars Wistedt", "Leonid Yurkovskiy", "Linda Lindberg", "Linus Bylund", "Ludvig Aspling", "Magnus Persson", "Markus Wiechel", "Martin Kinnunen", "Matheus Enholm", "Mats Arkhem", "Mats Nordberg", "Mattias Bäckström Johansson", "Mattias Eriksson Falk", "Mattias Karlsson", "Michael Rubbestad", "Mikael Eskilandersson", "Mikael Strandman", "Mona Olin", "Nima Gholam Ali Pour", "Nina Kain", "Oscar Sjöstedt", "Patrick Reslow", "Patrik Jönsson", "Paula Bieler", "Per Klarberg", "Per Ramhorn", "Per Söderlund", "Pontus Andersson Garpvall", "Rashid Farivar", "Richard Jomshof", "Robert Stenkvist", "Roger Hedlund", "Runar Filper", "Sara Gille", "Staffan Eklöf", "Stefan Jakobsson", "Sven-Olof Sällström", "Thomas Morell", "Tobias Andersson", "Tony Wiklander", "Ulf Lindholm", "Victoria Tiblom", "Yasmine Eriksson"],
+    '2014–2018': ["Adam Marttinen", "Alexander Christiansson", "Anders Forsberg", "Angelica Lundberg", "Angelika Bengtsson", "Ann-Christine Frohm", "Anne Oskarsson", "Aron Emilsson", "Björn Söder", "Bo Broman", "Carina Stö¥hl Herrstedt", "Caroline Nordengrip", "Cassandra Sundin", "Charlotte Quensel", "Christina Tapper ö–stberg", "Christoffer Dulny", "Clara Aranda", "David Lö¥ng", "Dennis Dioukarev", "Ebba Hermansson", "Eric Palmqvist", "Eric Westroth", "Fredrik Eriksson", "Fredrik Lindahl", "Heidi Karlsson", "Henrik Vinge", "Jennie ö…feldt", "Jimmie ö…kesson", "Jimmy Stö¥hl", "Johan Nissinen", "Johnny Skalin", "Jonas Andersson", "Jonas Millard", "Jonas ö…kerlund", "Josef Fransson", "Julia Kronlid", "Jörgen Grubb", "Kent Ekeroth", "Kristina Winberg", "Lars Andersson", "Linda Lindberg", "Linus Bylund", "Ludvig Aspling", "Magnus Persson", "Markus Wiechel", "Martin Kinnunen", "Matheus Enholm", "Mats Nordberg", "Mattias Bäckström Johansson", "Mattias Karlsson", "Michael Rubbestad", "Mikael Eskilandersson", "Mikael Strandman", "Nina Kain", "Oscar Sjöstedt", "Patrick Reslow", "Patrik Jönsson", "Paula Bieler", "Per Klarberg", "Per Ramhorn", "Peter Lundgren", "Richard Jomshof", "Robert Stenkvist", "Roger Hedlund", "Runar Filper", "Sara Gille", "Staffan Eklöf", "Stefan Jakobsson", "Stellan Bojerud", "Sven-Olof Sällström", "Thomas Morell", "Thoralf Alfsson", "Tobias Andersson", "Tony Wiklander", "Yasmine Eriksson"],
+    '2010–2014': ["Adam Marttinen", "Anders Forsberg", "Angelika Bengtsson", "Aron Emilsson", "Björn Söder", "Carina Stö¥hl Herrstedt", "Cassandra Sundin", "Christina Tapper ö–stberg", "Christoffer Dulny", "David Lö¥ng", "Dennis Dioukarev", "Erik Almqvist", "Jennie ö…feldt", "Jimmie ö…kesson", "Jimmy Stö¥hl", "Johan Nissinen", "Johnny Skalin", "Jonas Millard", "Jonas ö…kerlund", "Josef Fransson", "Julia Kronlid", "Kent Ekeroth", "Kristina Winberg", "Lars Isovaara", "Linus Bylund", "Magnus Persson", "Markus Wiechel", "Martin Kinnunen", "Mattias Bäckström Johansson", "Mattias Karlsson", "Mikael Eskilandersson", "Nina Kain", "Oscar Sjöstedt", "Patrick Reslow", "Patrik Jönsson", "Paula Bieler", "Per Klarberg", "Per Ramhorn", "Peter Lundgren", "Richard Jomshof", "Robert Stenkvist", "Roger Hedlund", "Runar Filper", "Stefan Jakobsson", "Stellan Bojerud", "Sven-Olof Sällström", "Thoralf Alfsson", "Tony Wiklander"],
+    '2006–2010': [],
+    '2002–2006': [],
+  },
+  C: {
+    '2022–2026': ["Alireza Akhondi", "Anders Karlsson", "Anders W Jonsson", "Anders ö…dahl", "Anders ö…kesson", "Anna Lasses", "Anne-Li Sjölund", "Annie Lööf", "Annika Qarlsson", "Aphram Melki", "Catarina Deremar", "Christofer Bergenblock", "Daniel Bäckström", "Elisabeth Thand Ringqvist", "Fredrik Christensson", "Helena Lindahl", "Helena Vilhelmsson", "Johan Hedin", "Jonny Cato", "Kerstin Lundgren", "Kristina Yngwe", "Lars Thomsson", "Linda Modig", "Madeleine Atlas", "Magnus Ek", "Malin Björk", "Martin ö…dahl", "Martina Johansson", "Mikael Larsson", "Muharrem Demirok", "Niels Paarup-Petersen", "Ola Johansson", "Per Schöldberg", "Per ö…sling", "Peter Helander", "Rickard Nordin", "Sofia Nilsson", "Stina Larsson", "Ulrika Heie", "Ulrika Liljeberg"],
+    '2018–2022': ["Alireza Akhondi", "Anders W Jonsson", "Anders ö…dahl", "Anders ö…kesson", "Anna Lasses", "Anne-Li Sjölund", "Annie Lööf", "Annika Qarlsson", "Aphram Melki", "Catarina Deremar", "Christofer Bergenblock", "Daniel Bäckström", "Elisabeth Thand Ringqvist", "Emil Källström", "Eskil Erlandsson", "Fredrik Christensson", "Helena Lindahl", "Helena Vilhelmsson", "Johan Hedin", "Johanna Jönsson", "Jonny Cato", "Kerstin Lundgren", "Kristina Yngwe", "Lars Thomsson", "Linda Modig", "Magnus Ek", "Malin Björk", "Martin ö…dahl", "Martina Johansson", "Mikael Larsson", "Muharrem Demirok", "Niels Paarup-Petersen", "Ola Johansson", "Per Lodenius", "Per Schöldberg", "Per ö…sling", "Per-Ingvar Johnsson", "Peter Helander", "Rickard Nordin", "Sofia Nilsson", "Solveig Zander", "Staffan Danielsson", "Stina Larsson", "Ulrika Heie", "Ulrika Liljeberg"],
+    '2014–2018': ["Abir Al-Sahlani", "Alireza Akhondi", "Anders Ahlgren", "Anders Flanking", "Anders W Jonsson", "Anders ö…kesson", "Annie Lööf", "Annika Qarlsson", "Daniel Bäckström", "Emil Källström", "Erik A Eriksson", "Eskil Erlandsson", "Fredrik Christensson", "Helena Lindahl", "Helena Vilhelmsson", "Johan Hedin", "Johan Linander", "Johanna Jönsson", "Jonny Cato", "Kerstin Lundgren", "Kristina Yngwe", "Lars Thomsson", "Lena Ek", "Linda Modig", "Magnus Ek", "Martin ö…dahl", "Martina Johansson", "Mikael Larsson", "Niels Paarup-Petersen", "Ola Johansson", "Per Lodenius", "Per ö…sling", "Per-Ingvar Johnsson", "Peter Helander", "Rickard Nordin", "Roger Tiefensee", "Sofia Nilsson", "Solveig Zander", "Staffan Danielsson", "Ulrika Heie", "ö…sa Torstensson"],
+    '2010–2014': ["Abir Al-Sahlani", "Anders Ahlgren", "Anders Flanking", "Anders W Jonsson", "Anders ö…kesson", "Andreas Carlgren", "Annie Lööf", "Annika Qarlsson", "Birgitta Sellö©n", "Christer Eriksson", "Claes Västerteg", "Daniel Bäckström", "Emil Källström", "Erik A Eriksson", "Eskil Erlandsson", "Eva Selin Lindgren", "Fredrick Federley", "Fredrik Christensson", "Gunnel Wallin", "Helena Lindahl", "Jan Andersson", "Johan Hedin", "Johan Linander", "Johanna Jönsson", "Kenneth Johansson", "Kerstin Lundgren", "Kristina Yngwe", "Lena Ek", "Lennart Pettersson", "Maud Olofsson", "Ola Johansson", "Per Lodenius", "Per ö…sling", "Per-Ingvar Johnsson", "Rickard Nordin", "Roger Tiefensee", "Sofia Larsen", "Solveig Zander", "Staffan Danielsson", "Stefan Tornberg", "Sven Bergström", "Ulrika Heie", "ö…sa Torstensson"],
+    '2006–2010': ["Agne Hansson", "Anders ö…kesson", "Annie Lööf", "Annika Qarlsson", "Birgitta Carlsson", "Birgitta Sellö©n", "Christer Eriksson", "Claes Västerteg", "Erik A Eriksson", "Eskil Erlandsson", "Eva Selin Lindgren", "Fredrick Federley", "Gunnel Wallin", "Hö¥kan Larsson", "Jan Andersson", "Johan Linander", "Jörgen Johansson", "Kenneth Johansson", "Kerstin Lundgren", "Lars-Ivar Ericson", "Lennart Pettersson", "Margareta Andersson", "Maud Olofsson", "Per Lodenius", "Per ö…sling", "Rigmor Stenmark", "Roger Tiefensee", "Sofia Larsen", "Solveig Zander", "Staffan Danielsson", "Stefan Tornberg", "Sven Bergström", "Ulrika Heie", "Viviann Gerdin", "ö…sa Torstensson"],
+    '2002–2006': ["Agne Hansson", "Annika Qarlsson", "Birgitta Carlsson", "Birgitta Sellö©n", "Claes Västerteg", "Eskil Erlandsson", "Gunnel Wallin", "Hö¥kan Larsson", "Jan Andersson", "Johan Linander", "Jörgen Johansson", "Kenneth Johansson", "Kerstin Lundgren", "Lars-Ivar Ericson", "Lena Ek", "Lennart Dalö©us", "Margareta Andersson", "Marianne Andersson", "Maud Olofsson", "Rigmor Stenmark", "Roger Tiefensee", "Rolf Kenneryd", "Sofia Larsen", "Staffan Danielsson", "Sven Bergström", "Viviann Gerdin", "ö…ke Sandström", "ö…sa Torstensson"],
+  },
+  KD: {
+    '2022–2026': ["Acko Ankarberg Johansson", "Andreas Carlson", "Camilla Brodin", "Cecilia Engström", "Christian Carlsson", "Ebba Busch", "Gudrun Brunegö¥rd", "Hampus Hagman", "Hans Eklind", "Ingemar Kihlström", "Jakob Forssmed", "Kjell-Arne Ottosson", "Larry Söder", "Lars Adaktusson", "Lili Andrö©", "Magnus Berntsson", "Magnus Jacobsson", "Magnus Oscarsson", "Mathias Bengtsson", "Michael Anefur", "Mikael Oscarsson", "Robert Halef", "Roland Utbult", "Sofia Damm", "Torsten Elofsson", "Tuve Skö¥nberg"],
+    '2018–2022': ["Acko Ankarberg Johansson", "Andreas Carlson", "Annika Eclund", "Aron Modig", "Camilla Brodin", "Caroline Szyber", "Cecilia Engström", "Christian Carlsson", "Dö©sirö©e Pethrus", "Ebba Busch", "Emma Henriksson", "Gudrun Brunegö¥rd", "Hampus Hagman", "Hans Eklind", "Ingemar Kihlström", "Jakob Forssmed", "Jimmy Loord", "Kjell-Arne Ottosson", "Larry Söder", "Lars Adaktusson", "Lars-Axel Nordell", "Lili Andrö©", "Magnus Berntsson", "Magnus Jacobsson", "Magnus Oscarsson", "Mathias Bengtsson", "Michael Anefur", "Mikael Oscarsson", "Penilla Gunther", "Robert Halef", "Roland Utbult", "Sofia Damm", "Torsten Elofsson", "Tuve Skö¥nberg"],
+    '2014–2018': ["Acko Ankarberg Johansson", "Anders Andersson", "Anders Sellström", "Andreas Carlson", "Annelie Enochson", "Annika Eclund", "Aron Modig", "Camilla Brodin", "Caroline Szyber", "Dö©sirö©e Pethrus", "Ebba Busch", "Emma Henriksson", "Göran Hägglund", "Hampus Hagman", "Hans Eklind", "Ingemar Kihlström", "Jakob Forssmed", "Jimmy Loord", "Kjell-Arne Ottosson", "Larry Söder", "Lars Adaktusson", "Lars Gustafsson", "Lars-Axel Nordell", "Magnus Jacobsson", "Magnus Oscarsson", "Magnus Sjödahl", "Maria Larsson", "Mats Odell", "Michael Anefur", "Mikael Oscarsson", "Penilla Gunther", "Robert Halef", "Roland Utbult", "Sofia Damm", "Stefan Attefall", "Tuve Skö¥nberg", "Yvonne Andersson"],
+    '2010–2014': ["Anders Andersson", "Anders Sellström", "Andreas Carlson", "Annelie Enochson", "Annika Eclund", "Aron Modig", "Caroline Szyber", "Dan Kihlström", "Dö©sirö©e Pethrus", "Else-Marie Lindgren", "Emma Henriksson", "Eva Johnsson", "Gunilla Tjernberg", "Göran Hägglund", "Holger Gustafsson", "Ingemar Vänerlöv", "Inger Davidson", "Ingvar Svensson", "Jakob Forssmed", "Kjell Eldensjö", "Lars Gustafsson", "Lars-Axel Nordell", "Lennart Sacrö©deus", "Liza-Maria Norlin", "Magnus Oscarsson", "Magnus Sjödahl", "Maria Larsson", "Mats Odell", "Michael Anefur", "Mikael Oscarsson", "Otto von Arnold", "Penilla Gunther", "Robert Halef", "Roland Utbult", "Rosita Runegrund", "Sofia Damm", "Stefan Attefall", "Tuve Skö¥nberg", "Yvonne Andersson"],
+    '2006–2010': ["Alf Svensson", "Anders Andersson", "Annelie Enochson", "Björn von der Esch", "Chatrine Pö¥lsson Ahlgren", "Dan Kihlström", "Else-Marie Lindgren", "Erling Wälivaara", "Eva Johnsson", "Gunilla Tjernberg", "Göran Hägglund", "Helena Höij", "Holger Gustafsson", "Ingemar Vänerlöv", "Inger Davidson", "Ingvar Svensson", "Johnny Gylling", "Kenneth Lantz", "Kjell Eldensjö", "Lars Gustafsson", "Lars Lindö©n", "Lars-Axel Nordell", "Lennart Sacrö©deus", "Liza-Maria Norlin", "Maria Larsson", "Mats Odell", "Michael Anefur", "Mikael Oscarsson", "Olle Sandahl", "Otto von Arnold", "Peter Althin", "Ragnwi Marcelind", "Rosita Runegrund", "Stefan Attefall", "Sven Brus", "Sven Gunnar Persson", "Torsten Lindström", "Tuve Skö¥nberg", "Ulrik Lindgren", "Yvonne Andersson"],
+    '2002–2006': ["Alf Svensson", "Amanda Agestav", "Annelie Enochson", "Björn von der Esch", "Carl-Axel Johansson", "Caroline Hagström", "Chatrine Pö¥lsson Ahlgren", "Dan Kihlström", "Else-Marie Lindgren", "Erling Wälivaara", "Ester Lindstedt-Staaf", "Fanny Rizell", "Gunilla Tjernberg", "Gustaf von Essen", "Göran Hägglund", "Harald Bergström", "Helena Höij", "Holger Gustafsson", "Ingemar Vänerlöv", "Inger Davidson", "Inger Strömbom", "Ingvar Svensson", "Jan Erik ö…gren", "Jan Orrenius", "Johnny Gylling", "Kenneth Lantz", "Kjell Eldensjö", "Lars Gustafsson", "Lars Lindö©n", "Magda Ayoub", "Magnus Jacobsson", "Margareta Viklund", "Maria Larsson", "Mats Odell", "Mikael Oscarsson", "Olle Sandahl", "Peter Althin", "Ragnwi Marcelind", "Rolf ö…björnsson", "Rose-Marie Frebran", "Rosita Runegrund", "Stefan Attefall", "Sven Brus", "Sven Gunnar Persson", "Torsten Lindström", "Tuve Skö¥nberg", "Ulf Björklund", "Ulrik Lindgren", "Yvonne Andersson", "ö…ke Carnerö"],
+  },
+  L: {
+    '2022–2026': ["Allan Widman", "Anna Starbrink", "Arman Teimouri", "Barbro Westerholm", "Bengt Eliasson", "Cecilia Rönn", "Christer Nylander", "Elin Nilsson", "Fredrik Malm", "Gulan Avci", "Helena Gellerman", "Helene Odenjung", "Jakob Olofsgö¥rd", "Joar Forssell", "Johan Pehrson", "Juno Blom", "Lina Nordquist", "Louise Eklund", "Malin Danielsson", "Maria Nilsson", "Martin Melin", "Mats Persson", "Nina Lundström", "Patrik Karlson", "Robert Hannah", "Roger Haddad", "Romina Pourmokhtari", "Tina Acketoft"],
+    '2018–2022': ["Allan Widman", "Anna Starbrink", "Arman Teimouri", "Barbro Westerholm", "Bengt Eliasson", "Birgitta Ohlsson", "Cecilia Rönn", "Christer Nylander", "Christina ö–rnebjär", "Fredrik Malm", "Gulan Avci", "Helena Gellerman", "Jakob Olofsgö¥rd", "Jan Björklund", "Joar Forssell", "Johan Pehrson", "Juno Blom", "Lars Tysklind", "Lina Nordquist", "Louise Eklund", "Malin Danielsson", "Maria Arnholm", "Maria Nilsson", "Maria Weimer", "Mathias Sundin", "Mats Persson", "Nina Lundström", "Robert Hannah", "Roger Haddad", "Romina Pourmokhtari", "Said Abdu", "Tina Acketoft", "Torkild Strandberg"],
+    '2014–2018': ["Allan Widman", "Anita Brodö©n", "Arman Teimouri", "Barbro Westerholm", "Bengt Eliasson", "Birgitta Ohlsson", "Carl B Hamilton", "Christer Nylander", "Christer Winbäck", "Christina ö–rnebjär", "Erik Ullenhag", "Eva Flyborg", "Fredrik Malm", "Gulan Avci", "Hans Backman", "Helena Gellerman", "Ismail Kamil", "Jan Björklund", "Jan Ertsborn", "Joar Forssell", "Johan Pehrson", "Juno Blom", "Karin Granbom Ellison", "Lars Tysklind", "Lina Nordquist", "Maria Arnholm", "Maria Lundqvist-Brömster", "Maria Nilsson", "Maria Weimer", "Mathias Sundin", "Mats Persson", "Nina Larsson", "Nina Lundström", "Robert Hannah", "Roger Haddad", "Said Abdu", "Stefan Käll", "Tina Acketoft", "Torkild Strandberg", "Ulf Nilsson"],
+    '2010–2014': ["Agneta Berliner", "Allan Widman", "Anita Brodö©n", "Barbro Westerholm", "Bengt Eliasson", "Birgitta Ohlsson", "Camilla Lindberg", "Carl B Hamilton", "Cecilia Wigström", "Christer Nylander", "Christer Winbäck", "Erik Ullenhag", "Eva Flyborg", "Fredrik Malm", "Gunnar Andrö©n", "Hans Backman", "Helena Bargholtz", "Ismail Kamil", "Jan Björklund", "Jan Ertsborn", "Johan Pehrson", "Karin Granbom Ellison", "Karin Pilsäter", "Lars Tysklind", "Liselott Hagberg", "Maria Arnholm", "Maria Lundqvist-Brömster", "Maria Weimer", "Mathias Sundin", "Mats Persson", "Nina Larsson", "Nina Lundström", "Nyamko Sabuni", "Robert Hannah", "Roger Haddad", "Said Abdu", "Solveig Hellquist", "Stefan Käll", "Tina Acketoft", "Tobias Krantz", "Torkild Strandberg", "Ulf Nilsson"],
+    '2006–2010': ["Agneta Berliner", "Allan Widman", "Ana Maria Narti", "Anita Brodö©n", "Anna Grönlund Krantz", "Anne-Marie Ekström", "Axel Darvik", "Barbro Westerholm", "Birgitta Ohlsson", "Camilla Lindberg", "Carl B Hamilton", "Cecilia Wigström", "Cecilia Wikström", "Christer Nylander", "Christer Winbäck", "Erik Ullenhag", "Erling Bager", "Eva Flyborg", "Gabriel Romanus", "Gunnar Andrö©n", "Gunnar Nordmark", "Hans Backman", "Helena Bargholtz", "Heli Berg", "Jan Björklund", "Jan Ertsborn", "Johan Pehrson", "Karin Granbom Ellison", "Karin Pilsäter", "Kerstin Heinemann", "Lars Leijonborg", "Lars Tysklind", "Lennart Fremling", "Lennart Kollmats", "Linnö©a Darell", "Liselott Hagberg", "Louise Edlind-Friberg", "Maria Lundqvist-Brömster", "Marie Wahlgren", "Mia Franzö©n", "Nina Larsson", "Nina Lundström", "Nyamko Sabuni", "Runar Patriksson", "Solveig Hellquist", "Sverker Thorö©n", "Tina Acketoft", "Tobias Krantz", "Torkild Strandberg", "Ulf Nilsson", "Yvonne ö…ngström"],
+    '2002–2006': ["Allan Widman", "Ana Maria Narti", "Anita Brodö©n", "Anna Grönlund Krantz", "Anne-Marie Ekström", "Axel Darvik", "Birgitta Ohlsson", "Bo Könberg", "Carl B Hamilton", "Cecilia Wigström", "Cecilia Wikström", "Christer Nylander", "Christer Winbäck", "Elver Jonsson", "Erik Ullenhag", "Erling Bager", "Eva Flyborg", "Gabriel Romanus", "Gunnar Andrö©n", "Gunnar Nordmark", "Hans Backman", "Harald Nordlund", "Helena Bargholtz", "Heli Berg", "Jan Ertsborn", "Johan Pehrson", "Karin Granbom Ellison", "Karin Pilsäter", "Karl-Göran Biörsmark", "Kenth Skö¥rvik", "Kerstin Heinemann", "Lars Leijonborg", "Lars Tysklind", "Lennart Fremling", "Lennart Kollmats", "Linnö©a Darell", "Liselott Hagberg", "Louise Edlind-Friberg", "Marie Wahlgren", "Mia Franzö©n", "Nina Lundström", "Nyamko Sabuni", "Runar Patriksson", "Solveig Hellquist", "Sverker Thorö©n", "Tina Acketoft", "Tobias Krantz", "Torkild Strandberg", "Ulf Nilsson", "Ulla-Britt Hagström", "Yvonne ö…ngström"],
+  },
+  MP: {
+    '2022–2026': ["Amanda Lind", "Amanda Palmstierna", "Anna Sibinska", "Annika Hirvonen", "Camilla Hansö©n", "Daniel Helldö©n", "Elin Söderberg", "Elisabeth Falkhaven", "Emma Berginger", "Emma Hult", "Emma Nohrö©n", "Jacob Risberg", "Jan Riise", "Janine Alm Ericson", "Leila Ali Elmi", "Linus Lakso", "Lorentz Tovatt", "Malte Tängmark Roos", "Maria Ferm", "Maria Gardfjell", "Martin Marmgren", "Märta Stenevi", "Nils Seye Larsen", "Per Bolund", "Rasmus Ling", "Rebecka Le Moine", "Ulrika Westerlund", "ö…sa Lindhagen"],
+    '2018–2022': ["Agneta Börjesson", "Alice Bah Kuhnke", "Amanda Lind", "Amanda Palmstierna", "Anders Schröder", "Anna Sibinska", "Annika Hirvonen", "Annika Lillemets", "Camilla Hansö©n", "Carl Schlyter", "Daniel Helldö©n", "Elin Söderberg", "Elisabeth Falkhaven", "Emma Berginger", "Emma Hult", "Emma Nohrö©n", "Esabelle Dingizian", "Gustav Fridolin", "Isabella Lövin", "Jabar Amin", "Jacob Risberg", "Jan Lindholm", "Jan Riise", "Janine Alm Ericson", "Jonas Eriksson", "Karin Svensson Smith", "Karolina Skog", "Leila Ali Elmi", "Linus Lakso", "Lise Nordin", "Lorentz Tovatt", "Marco Venegas", "Maria Ferm", "Maria Gardfjell", "Martin Marmgren", "Märta Stenevi", "Niclas Malmberg", "Per Bolund", "Per Olsson Fridh", "Pernilla Stö¥lhammar", "Rasmus Ling", "Rebecka Le Moine", "Rickard Persson", "Stina Bergström", "Ulrika Westerlund", "Valter Mutt", "ö…sa Lindhagen"],
+    '2014–2018': ["Agneta Börjesson", "Agneta Luttropp", "Alice Bah Kuhnke", "Anders Schröder", "Anna Sibinska", "Annika Hirvonen", "Annika Lillemets", "Carl Schlyter", "Elisabeth Falkhaven", "Emma Berginger", "Emma Hult", "Emma Nohrö©n", "Esabelle Dingizian", "Gunvor G Ericson", "Gustav Fridolin", "Helena Leander", "Isabella Lövin", "Jabar Amin", "Jan Lindholm", "Janine Alm Ericson", "Jonas Eriksson", "Karin Svensson Smith", "Karolina Skog", "Kew Nordqvist", "Leila Ali Elmi", "Lise Nordin", "Magnus Ehrencrona", "Marco Venegas", "Maria Ferm", "Maria Gardfjell", "Mats Pertoft", "Mehmet Kaplan", "Niclas Malmberg", "Per Bolund", "Per Olsson Fridh", "Per-Johan Emtell", "Pernilla Stö¥lhammar", "Peter Rö¥dberg", "Rasmus Ling", "Rebecka Le Moine", "Rickard Persson", "Stina Bergström", "Tina Ehn", "Ulf Holm", "Valter Mutt", "ö…sa Romson"],
+    '2010–2014': ["Agneta Börjesson", "Agneta Luttropp", "Anders Schröder", "Annika Hirvonen", "Annika Lillemets", "Bodil Ceballos", "Carl Schlyter", "Emma Hult", "Emma Nohrö©n", "Esabelle Dingizian", "Gunvor G Ericson", "Gustav Fridolin", "Helena Leander", "Jabar Amin", "Jan Lindholm", "Janine Alm Ericson", "Jonas Eriksson", "Karin Svensson Smith", "Kew Nordqvist", "Lage Rahm", "Lise Nordin", "Magnus Ehrencrona", "Marco Venegas", "Maria Ferm", "Maria Wetterstrand", "Mats Pertoft", "Max Andersson", "Mehmet Kaplan", "Mikael Johansson", "Mikaela Valtersson", "Niclas Malmberg", "Per Bolund", "Per Olsson Fridh", "Per-Johan Emtell", "Peter Eriksson", "Peter Rö¥dberg", "Rasmus Ling", "Rickard Persson", "Stina Bergström", "Thomas Nihlö©n", "Tina Ehn", "Ulf Holm", "Valter Mutt", "ö…sa Romson"],
+    '2006–2010': ["Barbro Feltzing", "Bodil Ceballos", "Claes Roxbergh", "Esabelle Dingizian", "Gunvor G Ericson", "Gustav Fridolin", "Helena Hillar Rosenqvist", "Helena Leander", "Ingegerd Saarinen", "Jan Lindholm", "Karin Svensson Smith", "Karla Lö³pez", "Lage Rahm", "Lars ö…ngström", "Leif Björnlod", "Lotta Hedström", "Maria Wetterstrand", "Mats Pertoft", "Max Andersson", "Mehmet Kaplan", "Mikael Johansson", "Mikaela Valtersson", "Mona Jönsson", "Per Bolund", "Peter Eriksson", "Peter Rö¥dberg", "Thomas Nihlö©n", "Tina Ehn", "Ulf Holm", "Yvonne Ruwaida", "ö…sa Domeij", "ö…sa Romson"],
+    '2002–2006': ["Barbro Feltzing", "Claes Roxbergh", "Gudrun Lindvall", "Gunnar Goude", "Gunvor G Ericson", "Gustav Fridolin", "Helena Hillar Rosenqvist", "Ingegerd Saarinen", "Jan Lindholm", "Karin Svensson Smith", "Kia Andreasson", "Lars ö…ngström", "Leif Björnlod", "Lotta Hedström", "Maria Wetterstrand", "Marianne Samuelsson", "Matz Hammarström", "Mikael Johansson", "Mikaela Valtersson", "Mona Jönsson", "Per Lager", "Peter Eriksson", "Thomas Julin", "Ulf Holm", "Yvonne Ruwaida", "ö…sa Domeij"],
+  },
 };
+
 const voteSchema = {
   'Arbetsrätt':[
     {period:'2022–2026',events:[
@@ -820,18 +943,18 @@ const voteSchema = {
   ],
   'Gängkriminalitet':[
     {period:'2022–2026',events:[
-      {id:'gg22a',label:'Visitationszoner',desc:'Riksdagen röstade om att ge polisen rätt att kroppsvisitera personer i utpekade zoner utan konkret misstanke.'},
-      {id:'gg22b',label:'Hårdare straff för gängbrott',desc:'Tidöavtalet skärpte straffen för brott begångna inom ramen för organiserad brottslighet.'},
-      {id:'gg22c',label:'Anonyma vittnen',desc:'Riksdagen röstade om att tillåta anonyma vittnen i rättegångar för att skydda dem från hot.'}
+      {id:'gg22a',date:'2023-06-07',label:'Visitationszoner',desc:'Riksdagen röstade om att ge polisen rätt att kroppsvisitera personer i utpekade zoner utan konkret misstanke.'},
+      {id:'gg22b',date:'2023-06-07',label:'Hårdare straff för gängbrott',desc:'Tidöavtalet skärpte straffen för brott begångna inom ramen för organiserad brottslighet.'},
+      {id:'gg22c',date:'2023-06-07',label:'Anonyma vittnen',desc:'Riksdagen röstade om att tillåta anonyma vittnen i rättegångar för att skydda dem från hot.'}
     ]},
     {period:'2018–2022',events:[
-      {id:'gg18a',label:'Nationell mobilisering mot gängvåld',desc:'Riksdagen röstade om en nationell plan mot organiserad brottslighet med fler poliser och skärpta straff.'},
-      {id:'gg18b',label:'Preventiva insatser mot rekrytering',desc:'Debatt om sociala insatser och förebyggande arbete som alternativ eller komplement till hårdare straff.'}
+      {id:'gg18a',date:'2020-09-23',label:'Nationell mobilisering mot gängvåld',desc:'Riksdagen röstade om en nationell plan mot organiserad brottslighet med fler poliser och skärpta straff.'},
+      {id:'gg18b',date:'2020-09-23',label:'Preventiva insatser mot rekrytering',desc:'Debatt om sociala insatser och förebyggande arbete som alternativ eller komplement till hårdare straff.'}
     ]},
-    {period:'2014–2018',events:[{id:'gg14a',label:'Mc-gäng och organiserad brottslighet',desc:'Riksdagen röstade om åtgärder mot MC-gäng och kriminella nätverk.'}]},
-    {period:'2010–2014',events:[{id:'gg10a',label:'Skärpt lagstiftning mot organiserad brottslighet',desc:'Riksdagen röstade om att kriminalisera deltagande i kriminella organisationer.'}]},
-    {period:'2006–2010',events:[{id:'gg06a',label:'Polisens befogenheter och resurser',desc:'Alliansen ökade polisanslaget och debatterade utvidgade befogenheter mot gängkriminalitet.'}]},
-    {period:'2002–2006',events:[{id:'gg02a',label:'Sociala insatser mot ungdomsbrottslighet',desc:'S betonade sociala åtgärder, skola och fritidsverksamhet som primära verktyg mot ungdomskriminalitet.'}]}
+    {period:'2014–2018',events:[{id:'gg14a',date:'2016-03-16',label:'Mc-gäng och organiserad brottslighet',desc:'Riksdagen röstade om åtgärder mot MC-gäng och kriminella nätverk.'}]},
+    {period:'2010–2014',events:[{id:'gg10a',date:'2013-03-20',label:'Skärpt lagstiftning mot organiserad brottslighet',desc:'Riksdagen röstade om att kriminalisera deltagande i kriminella organisationer.'}]},
+    {period:'2006–2010',events:[{id:'gg06a',date:'2008-03-19',label:'Polisens befogenheter och resurser',desc:'Alliansen ökade polisanslaget och debatterade utvidgade befogenheter mot gängkriminalitet.'}]},
+    {period:'2002–2006',events:[{id:'gg02a',date:'2005-03-16',label:'Sociala insatser mot ungdomsbrottslighet',desc:'S betonade sociala åtgärder, skola och fritidsverksamhet som primära verktyg mot ungdomskriminalitet.'}]}
   ],
   'Polisresurser':[
     {period:'2022–2026',events:[{id:'pr22a',label:'10 000 fler poliser till 2024',desc:'Riksdagen röstade om att finansiera och genomföra en massiv ökning av poliskåren.'}]},
@@ -843,14 +966,14 @@ const voteSchema = {
   ],
   'Straff':[
     {period:'2022–2026',events:[
-      {id:'st22a',label:'Straffskärpningar i Tidöavtalet',desc:'Tidöavtalet innehöll en rad straffskärpningar, bland annat för vapenbrott och grovt rån.'},
-      {id:'st22b',label:'Sänkt straffmyndighetsålder',desc:'Riksdagen röstade om att sänka straffmyndighetsåldern från 15 till 14 år för grova brott.'}
+      {id:'st22a',date:'2023-06-07',label:'Straffskärpningar i Tidöavtalet',desc:'Tidöavtalet innehöll en rad straffskärpningar, bland annat för vapenbrott och grovt rån.'},
+      {id:'st22b',date:'2023-06-07',label:'Sänkt straffmyndighetsålder',desc:'Riksdagen röstade om att sänka straffmyndighetsåldern från 15 till 14 år för grova brott.'}
     ]},
-    {period:'2018–2022',events:[{id:'st18a',label:'Minimistraff för grova våldsbrott',desc:'Riksdagen röstade om att höja minimistraffen för grov misshandel, rån och sexualbrott.'}]},
-    {period:'2014–2018',events:[{id:'st14a',label:'Återfall i brott och skärpta straff',desc:'Riksdagen röstade om straffskärpningar för återfallsförbrytare.'}]},
-    {period:'2010–2014',events:[{id:'st10a',label:'Proportionalitet i straffskalan',desc:'Debatt om huruvida svenska straff är för låga och om höjda straff minskar brott.'}]},
-    {period:'2006–2010',events:[{id:'st06a',label:'Straffskärpningar för sexualbrott',desc:'Riksdagen röstade om skärpta straff för sexualbrott, inklusive höjda minimistraff för våldtäkt.'}]},
-    {period:'2002–2006',events:[{id:'st02a',label:'Rehabilitering vs bestraffning',desc:'Debatt om balansen mellan rehabilitering och bestraffning. S betonade rehabilitering, M hårdare straff.'}]}
+    {period:'2018–2022',events:[{id:'st18a',date:'2020-03-18',label:'Minimistraff för grova våldsbrott',desc:'Riksdagen röstade om att höja minimistraffen för grov misshandel, rån och sexualbrott.'}]},
+    {period:'2014–2018',events:[{id:'st14a',date:'2017-03-15',label:'Återfall i brott och skärpta straff',desc:'Riksdagen röstade om straffskärpningar för återfallsförbrytare.'}]},
+    {period:'2010–2014',events:[{id:'st10a',date:'2012-03-14',label:'Proportionalitet i straffskalan',desc:'Debatt om huruvida svenska straff är för låga och om höjda straff minskar brott.'}]},
+    {period:'2006–2010',events:[{id:'st06a',date:'2008-03-19',label:'Straffskärpningar för sexualbrott',desc:'Riksdagen röstade om skärpta straff för sexualbrott, inklusive höjda minimistraff för våldtäkt.'}]},
+    {period:'2002–2006',events:[{id:'st02a',date:'2004-03-17',label:'Rehabilitering vs bestraffning',desc:'Debatt om balansen mellan rehabilitering och bestraffning. S betonade rehabilitering, M hårdare straff.'}]}
   ],
   'Utvisning':[
     {period:'2022–2026',events:[
@@ -906,37 +1029,37 @@ const voteSchema = {
   ],
   'Klimatmål':[
     {period:'2022–2026',events:[
-      {id:'km22a',label:'Höjd koldioxidskatt',desc:'Riksdagen röstade om att höja koldioxidskatten ytterligare för att nå klimatmålen.'},
-      {id:'km22b',label:'Kärnkraft i EU:s taxonomi',desc:'EU klassade kärnkraft som grön investering. Riksdagen debatterade om Sverige ska välkomna eller kritisera.'}
+      {id:'km22a',date:'2023-06-21',label:'Höjd koldioxidskatt',desc:'Riksdagen röstade om att höja koldioxidskatten ytterligare för att nå klimatmålen.'},
+      {id:'km22b',date:'2022-07-06',label:'Kärnkraft i EU:s taxonomi',desc:'EU klassade kärnkraft som grön investering. Riksdagen debatterade om Sverige ska välkomna eller kritisera.'}
     ]},
     {period:'2018–2022',events:[
-      {id:'km18a',label:'Klimatlagen netto-noll 2045',desc:'Riksdagen antog klimatlagen med målet om netto-noll utsläpp 2045.'},
-      {id:'km18b',label:'Klimathandlingsplanen',desc:'Riksdagen röstade om godkännande av regeringens plan för hur klimatmålen ska nås.'}
+      {id:'km18a',date:'2017-06-15',label:'Klimatlagen netto-noll 2045',desc:'Riksdagen antog klimatlagen med målet om netto-noll utsläpp 2045.'},
+      {id:'km18b',date:'2022-11-30',label:'Klimathandlingsplanen',desc:'Riksdagen röstade om godkännande av regeringens plan för hur klimatmålen ska nås.'}
     ]},
-    {period:'2014–2018',events:[{id:'km14a',label:'Parisavtalet',desc:'Sverige ratificerade Parisavtalet och riksdagen röstade om hur ambitiösa de svenska åtagandena ska vara.'}]},
-    {period:'2010–2014',events:[{id:'km10a',label:'EU:s klimatpaket',desc:'Riksdagen röstade om Sveriges position i EU:s klimatförhandlingar och utsläppshandelssystemet ETS.'}]},
-    {period:'2006–2010',events:[{id:'km06a',label:'Klimatproposition',desc:'Alliansen lade fram en klimatproposition med höjd koldioxidskatt och nya utsläppsmål.'}]},
-    {period:'2002–2006',events:[{id:'km02a',label:'Kyoto-protokollet',desc:'Sverige ratificerade Kyoto och debatterade hur långt utöver åtagandena Sverige borde gå.'}]}
+    {period:'2014–2018',events:[{id:'km14a',date:'2016-10-13',label:'Parisavtalet',desc:'Sverige ratificerade Parisavtalet och riksdagen röstade om hur ambitiösa de svenska åtagandena ska vara.'}]},
+    {period:'2010–2014',events:[{id:'km10a',date:'2013-04-18',label:'EU:s klimatpaket',desc:'Riksdagen röstade om Sveriges position i EU:s klimatförhandlingar och utsläppshandelssystemet ETS.'}]},
+    {period:'2006–2010',events:[{id:'km06a',date:'2008-03-18',label:'Klimatproposition',desc:'Alliansen lade fram en klimatproposition med höjd koldioxidskatt och nya utsläppsmål.'}]},
+    {period:'2002–2006',events:[{id:'km02a',date:'2004-12-01',label:'Kyoto-protokollet',desc:'Sverige ratificerade Kyoto och debatterade hur långt utöver åtagandena Sverige borde gå.'}]}
   ],
   'Kärnkraft':[
     {period:'2022–2026',events:[
-      {id:'k22a',label:'Statlig garantiram för ny kärnkraft (400 mdr)',desc:'Riksdagen röstade om att ge staten ett garantiåtagande på 400 miljarder för att finansiera nya reaktorer.'},
-      {id:'k22b',label:'Häva effektbegränsning för befintliga reaktorer',desc:'En lag från 1984 begränsar antalet reaktorer. Riksdagen röstade om att ta bort begränsningen.'},
-      {id:'k22c',label:'Riksdagsbeslut: möjliggöra byggande av ny kärnkraft',desc:'Huvudbeslutet som formellt öppnade för ny kärnkraft i Sverige för första gången på decennier.'}
+      {id:'k22a',date:'2023-06-14',label:'Statlig garantiram för ny kärnkraft (400 mdr)',desc:'Riksdagen röstade om att ge staten ett garantiåtagande på 400 miljarder för att finansiera nya reaktorer.'},
+      {id:'k22b',date:'2023-06-14',label:'Häva effektbegränsning för befintliga reaktorer',desc:'En lag från 1984 begränsar antalet reaktorer. Riksdagen röstade om att ta bort begränsningen.'},
+      {id:'k22c',date:'2023-06-14',label:'Riksdagsbeslut: möjliggöra byggande av ny kärnkraft',desc:'Huvudbeslutet som formellt öppnade för ny kärnkraft i Sverige för första gången på decennier.'}
     ]},
     {period:'2018–2022',events:[
-      {id:'k18a',label:'Stoppa nedläggning av Ringhals 1 & 2',desc:'Riksdagen röstade om motioner för att hålla Ringhals 1 och 2 i drift.'},
-      {id:'k18b',label:'Motion om kärnkraftsfri energipolitik',desc:'Motioner om att Sverige officiellt ska anta en plan för att avveckla all kärnkraft.'}
+      {id:'k18a',date:'2019-06-19',label:'Stoppa nedläggning av Ringhals 1 & 2',desc:'Riksdagen röstade om motioner för att hålla Ringhals 1 och 2 i drift.'},
+      {id:'k18b',date:'2019-06-19',label:'Motion om kärnkraftsfri energipolitik',desc:'Motioner om att Sverige officiellt ska anta en plan för att avveckla all kärnkraft.'}
     ]},
     {period:'2014–2018',events:[
-      {id:'k14a',label:'Energiöverenskommelsen 2016',desc:'Bred politisk uppgörelse om kärnkraftens roll. Gamla reaktorer fick fortsätta men ny kärnkraft tilläts inte.'},
-      {id:'k14b',label:'Effektskatt på kärnkraft',desc:'Skatten baserad på reaktorernas effekt. Kritiserades för att göra drift olönsam.'}
+      {id:'k14a',date:'2016-06-10',label:'Energiöverenskommelsen 2016',desc:'Bred politisk uppgörelse om kärnkraftens roll. Gamla reaktorer fick fortsätta men ny kärnkraft tilläts inte.'},
+      {id:'k14b',date:'2015-12-16',label:'Effektskatt på kärnkraft',desc:'Skatten baserad på reaktorernas effekt. Kritiserades för att göra drift olönsam.'}
     ]},
-    {period:'2010–2014',events:[{id:'k10a',label:'Alliansens energiuppgörelse — ersättningsreaktorer',desc:'Förbudet mot ny kärnkraft togs bort, men bara för ersättning av befintliga anläggningar.'}]},
-    {period:'2006–2010',events:[{id:'k06a',label:'Häva förbudet mot nybyggnation',desc:'Alliansen drev på för att häva det politiska förbudet mot ny kärnkraft sedan 1980.'}]},
+    {period:'2010–2014',events:[{id:'k10a',date:'2010-06-17',label:'Alliansens energiuppgörelse — ersättningsreaktorer',desc:'Förbudet mot ny kärnkraft togs bort, men bara för ersättning av befintliga anläggningar.'}]},
+    {period:'2006–2010',events:[{id:'k06a',date:'2009-02-05',label:'Häva förbudet mot nybyggnation',desc:'Alliansen drev på för att häva det politiska förbudet mot ny kärnkraft sedan 1980.'}]},
     {period:'2002–2006',events:[
-      {id:'k02a',label:'Stängning av Barsebäck 2',desc:'Den sista reaktorn på Barsebäck stängdes 2005. Riksdagen röstade om huruvida stängningen var välmotiverad.'},
-      {id:'k02b',label:'Generell avvecklingsplan för kärnkraft',desc:'S ville ha en tidsplan för att fasa ut all kärnkraft. Borgerliga partier motarbetade en fast plan.'}
+      {id:'k02a',date:'2005-05-31',label:'Stängning av Barsebäck 2',desc:'Den sista reaktorn på Barsebäck stängdes 2005. Riksdagen röstade om huruvida stängningen var välmotiverad.'},
+      {id:'k02b',date:'2004-11-24',label:'Generell avvecklingsplan för kärnkraft',desc:'S ville ha en tidsplan för att fasa ut all kärnkraft. Borgerliga partier motarbetade en fast plan.'}
     ]}
   ],
   'Cybersäkerhet':[
@@ -999,58 +1122,58 @@ const voteSchema = {
   ],
   'Försvarsbudget':[
     {period:'2022–2026',events:[
-      {id:'fb22a',label:'2% av BNP till försvaret',desc:'Sverige nådde NATO-målet om att lägga 2% av BNP på försvaret, en massiv ökning.'},
-      {id:'fb22b',label:'Värnpliktens återinförande och utökning',desc:'Riksdagen röstade om att utöka antalet värnpliktiga och förlänga grundutbildningen.'}
+      {id:'fb22a',date:'2023-03-16',label:'2% av BNP till försvaret',desc:'Sverige nådde NATO-målet om att lägga 2% av BNP på försvaret, en massiv ökning.'},
+      {id:'fb22b',date:'2022-09-22',label:'Värnpliktens återinförande och utökning',desc:'Riksdagen röstade om att utöka antalet värnpliktiga och förlänga grundutbildningen.'}
     ]},
-    {period:'2018–2022',events:[{id:'fb18a',label:'Totalförsvarets återuppbyggnad',desc:'Riksdagen röstade om att återuppbygga det civila och militära totalförsvaret.'}]},
-    {period:'2014–2018',events:[{id:'fb14a',label:'Försvarsbeslutet 2015',desc:'Riksdagen röstade om ett försvarspaket som kritiserades som otillräckligt av experter.'}]},
-    {period:'2010–2014',events:[{id:'fb10a',label:'Insatsförsvaret',desc:'Riksdagen röstade om omorganiseringen från invasionsförsvar till ett mindre insatsförsvar.'}]},
-    {period:'2006–2010',events:[{id:'fb06a',label:'Neddragningar i försvaret',desc:'Alliansen fortsatte neddragningarna i försvarsbudgeten trots oro för Ryssland.'}]},
-    {period:'2002–2006',events:[{id:'fb02a',label:'Avveckling av invasionsförsvaret',desc:'S-regeringen genomförde stora neddragningar och avvecklade territorialförsvaret.'}]}
+    {period:'2018–2022',events:[{id:'fb18a',date:'2020-10-15',label:'Totalförsvarets återuppbyggnad',desc:'Riksdagen röstade om att återuppbygga det civila och militära totalförsvaret.'}]},
+    {period:'2014–2018',events:[{id:'fb14a',date:'2015-06-19',label:'Försvarsbeslutet 2015',desc:'Riksdagen röstade om ett försvarspaket som kritiserades som otillräckligt av experter.'}]},
+    {period:'2010–2014',events:[{id:'fb10a',date:'2009-06-16',label:'Insatsförsvaret',desc:'Riksdagen röstade om omorganiseringen från invasionsförsvar till ett mindre insatsförsvar.'}]},
+    {period:'2006–2010',events:[{id:'fb06a',date:'2008-09-04',label:'Neddragningar i försvaret',desc:'Alliansen fortsatte neddragningarna i försvarsbudgeten trots oro för Ryssland.'}]},
+    {period:'2002–2006',events:[{id:'fb02a',date:'2004-12-15',label:'Avveckling av invasionsförsvaret',desc:'S-regeringen genomförde stora neddragningar och avvecklade territorialförsvaret.'}]}
   ],
   'NATO':[
     {period:'2022–2026',events:[
-      {id:'na22a',label:'NATO-ansökan och medlemskap',desc:'Sverige ansökte om NATO-medlemskap 2022 och blev fullvärdig medlem 2024.'},
-      {id:'na22b',label:'Artikel 5 och kollektivt försvar',desc:'Riksdagen debatterade innebörden av NATO-medlemskapet och kollektivt försvar.'}
+      {id:'na22a',date:'2022-05-17',label:'NATO-ansökan och medlemskap',desc:'Sverige ansökte om NATO-medlemskap 2022 och blev fullvärdig medlem 2024.'},
+      {id:'na22b',date:'2024-03-07',label:'Artikel 5 och kollektivt försvar',desc:'Riksdagen debatterade innebörden av NATO-medlemskapet och kollektivt försvar.'}
     ]},
-    {period:'2018–2022',events:[{id:'na18a',label:'NATO-utredningen',desc:'Riksdagen debatterade en statlig utredning om för- och nackdelar med NATO-medlemskap.'}]},
-    {period:'2014–2018',events:[{id:'na14a',label:'Värdlandsavtalet med NATO',desc:'Riksdagen röstade om ett värdlandsavtal med NATO utan formellt medlemskap.'}]},
-    {period:'2010–2014',events:[{id:'na10a',label:'Partnerskap för fred',desc:'Sverige fördjupade sitt samarbete med NATO inom Partnerskap för fred.'}]},
-    {period:'2006–2010',events:[{id:'na06a',label:'Alliansfrihet vs NATO-debatt',desc:'Alliansen öppnade för en mer öppen NATO-debatt men behöll alliansfriheten.'}]},
-    {period:'2002–2006',events:[{id:'na02a',label:'Militär alliansfrihet',desc:'S-regeringen värnade om Sveriges militära alliansfrihet som hörnsten i säkerhetspolitiken.'}]}
+    {period:'2018–2022',events:[{id:'na18a',date:'2021-05-20',label:'NATO-utredningen',desc:'Riksdagen debatterade en statlig utredning om för- och nackdelar med NATO-medlemskap.'}]},
+    {period:'2014–2018',events:[{id:'na14a',date:'2016-05-25',label:'Värdlandsavtalet med NATO',desc:'Riksdagen röstade om ett värdlandsavtal med NATO utan formellt medlemskap.'}]},
+    {period:'2010–2014',events:[{id:'na10a',date:'2012-03-14',label:'Partnerskap för fred',desc:'Sverige fördjupade sitt samarbete med NATO inom Partnerskap för fred.'}]},
+    {period:'2006–2010',events:[{id:'na06a',date:'2008-11-19',label:'Alliansfrihet vs NATO-debatt',desc:'Alliansen öppnade för en mer öppen NATO-debatt men behöll alliansfriheten.'}]},
+    {period:'2002–2006',events:[{id:'na02a',date:'2004-03-17',label:'Militär alliansfrihet',desc:'S-regeringen värnade om Sveriges militära alliansfrihet som hörnsten i säkerhetspolitiken.'}]}
   ],
   'Palestinakonflikten':[
     {period:'2022–2026',events:[
-      {id:'pa22a',label:'Erkännande av palestinsk stat',desc:'Sverige erkände Palestina som stat 2014. Riksdagen debatterade hur Sverige ska agera i FN och EU.'},
-      {id:'pa22b',label:'Vapenstillestånd i Gaza',desc:'Riksdagen röstade om svenska ståndpunkter kring vapenstillestånd och humanitärt tillträde i Gaza.'}
+      {id:'pa22a',date:'2024-05-22',label:'Erkännande av palestinsk stat',desc:'Sverige erkände Palestina som stat 2014. Riksdagen debatterade hur Sverige ska agera i FN och EU.'},
+      {id:'pa22b',date:'2024-11-20',label:'Vapenstillestånd i Gaza',desc:'Riksdagen röstade om svenska ståndpunkter kring vapenstillestånd och humanitärt tillträde i Gaza.'}
     ]},
-    {period:'2018–2022',events:[{id:'pa18a',label:'UNRWA och biståndsfinansiering',desc:'Riksdagen röstade om att upprätthålla eller minska bidraget till UNRWA.'}]},
-    {period:'2014–2018',events:[{id:'pa14a',label:'Riksdagsbeslut om erkännande av Palestina',desc:'Riksdagen röstade om en resolution om att erkänna Palestina som stat.'}]},
-    {period:'2010–2014',events:[{id:'pa10a',label:'Tvåstatslösningen och fredsprocessen',desc:'Riksdagen debatterade Sveriges roll i att stödja fredsprocessen och tvåstatslösningen.'}]},
-    {period:'2006–2010',events:[{id:'pa06a',label:'Bistånd till Palestina',desc:'Riksdagen röstade om Sveriges bistånd till den palestinska myndigheten efter Hamas valseger 2006.'}]},
-    {period:'2002–2006',events:[{id:'pa02a',label:'Israelisk-palestinska fredsförhandlingar',desc:'Riksdagen debatterade Sveriges roll i att stödja fredsförhandlingarna.'}]}
+    {period:'2018–2022',events:[{id:'pa18a',date:'2019-06-12',label:'UNRWA och biståndsfinansiering',desc:'Riksdagen röstade om att upprätthålla eller minska bidraget till UNRWA.'}]},
+    {period:'2014–2018',events:[{id:'pa14a',date:'2014-10-16',label:'Riksdagsbeslut om erkännande av Palestina',desc:'Riksdagen röstade om en resolution om att erkänna Palestina som stat.'}]},
+    {period:'2010–2014',events:[{id:'pa10a',date:'2012-11-30',label:'Tvåstatslösningen och fredsprocessen',desc:'Riksdagen debatterade Sveriges roll i att stödja fredsprocessen och tvåstatslösningen.'}]},
+    {period:'2006–2010',events:[{id:'pa06a',date:'2006-09-14',label:'Bistånd till Palestina',desc:'Riksdagen röstade om Sveriges bistånd till den palestinska myndigheten efter Hamas valseger 2006.'}]},
+    {period:'2002–2006',events:[{id:'pa02a',date:'2004-06-16',label:'Israelisk-palestinska fredsförhandlingar',desc:'Riksdagen debatterade Sveriges roll i att stödja fredsförhandlingarna.'}]}
   ],
   'Ukrainakonflikten':[
     {period:'2022–2026',events:[
-      {id:'uk22a',label:'Militärt stöd till Ukraina',desc:'Sverige har skickat ett av de största militära stödpaketen per capita till Ukraina.'},
-      {id:'uk22b',label:'Ukrainas EU-medlemskap',desc:'Riksdagen röstade om att stödja Ukrainas ansökan om EU-medlemskap.'}
+      {id:'uk22a',date:'2024-02-22',label:'Militärt stöd till Ukraina',desc:'Sverige har skickat ett av de största militära stödpaketen per capita till Ukraina.'},
+      {id:'uk22b',date:'2022-06-23',label:'Ukrainas EU-medlemskap',desc:'Riksdagen röstade om att stödja Ukrainas ansökan om EU-medlemskap.'}
     ]},
-    {period:'2018–2022',events:[{id:'uk18a',label:'Sanktioner mot Ryssland',desc:'Riksdagen röstade om att stödja EU:s sanktioner mot Ryssland.'}]},
-    {period:'2014–2018',events:[{id:'uk14a',label:'Krimannexionen och folkrätten',desc:'Riksdagen debatterade Sveriges svar på Rysslands annektering av Krim 2014.'}]},
-    {period:'2010–2014',events:[{id:'uk10a',label:'EU:s östliga partnerskap',desc:'Riksdagen röstade om att stödja EU:s östliga partnerskap som inkluderade Ukraina.'}]},
-    {period:'2006–2010',events:[{id:'uk06a',label:'Ukrainas NATO-aspiration',desc:'Riksdagen debatterade Sveriges position på Ukrainas eventuella NATO-medlemskap.'}]},
-    {period:'2002–2006',events:[{id:'uk02a',label:'Den orange revolutionen',desc:'Riksdagen debatterade hur Sverige och EU ska stödja demokratiseringen i Ukraina 2004.'}]}
+    {period:'2018–2022',events:[{id:'uk18a',date:'2022-02-25',label:'Sanktioner mot Ryssland',desc:'Riksdagen röstade om att stödja EU:s sanktioner mot Ryssland.'}]},
+    {period:'2014–2018',events:[{id:'uk14a',date:'2014-03-20',label:'Krimannexionen och folkrätten',desc:'Riksdagen debatterade Sveriges svar på Rysslands annektering av Krim 2014.'}]},
+    {period:'2010–2014',events:[{id:'uk10a',date:'2013-11-28',label:'EU:s östliga partnerskap',desc:'Riksdagen röstade om att stödja EU:s östliga partnerskap som inkluderade Ukraina.'}]},
+    {period:'2006–2010',events:[{id:'uk06a',date:'2008-08-27',label:'Ukrainas NATO-aspiration',desc:'Riksdagen debatterade Sveriges position på Ukrainas eventuella NATO-medlemskap.'}]},
+    {period:'2002–2006',events:[{id:'uk02a',date:'2004-11-25',label:'Den orange revolutionen',desc:'Riksdagen debatterade hur Sverige och EU ska stödja demokratiseringen i Ukraina 2004.'}]}
   ],
   'Asylpolitik':[
     {period:'2022–2026',events:[
-      {id:'as22a',label:'Skärpt asyllagstiftning',desc:'Tidöavtalet innehöll de striktaste asylreglerna i modern svensk historia.'},
-      {id:'as22b',label:'Tillfälliga uppehållstillstånd som norm',desc:'Riksdagen röstade om att göra tillfälliga uppehållstillstånd till normalläge.'}
+      {id:'as22a',date:'2022-10-19',label:'Skärpt asyllagstiftning',desc:'Tidöavtalet innehöll de striktaste asylreglerna i modern svensk historia.'},
+      {id:'as22b',date:'2022-10-19',label:'Tillfälliga uppehållstillstånd som norm',desc:'Riksdagen röstade om att göra tillfälliga uppehållstillstånd till normalläge.'}
     ]},
-    {period:'2018–2022',events:[{id:'as18a',label:'Förlängning av den tillfälliga lagen',desc:'Riksdagen röstade om att förlänga den tillfälliga asyllagstiftning som infördes 2016.'}]},
-    {period:'2014–2018',events:[{id:'as14a',label:'Tillfällig begränsningslag 2016',desc:'S-MP-regeringen bröt med traditionen och begränsade asylrätten tillfälligt.'}]},
-    {period:'2010–2014',events:[{id:'as10a',label:'Gymnasielagen',desc:'Riksdagen röstade om rätten för ensamkommande ungdomar att stanna kvar för att slutföra gymnasiet.'}]},
-    {period:'2006–2010',events:[{id:'as06a',label:'Ny instans- och processordning',desc:'Riksdagen röstade om en reform av asylprocessen med migrationsdomstolar.'}]},
-    {period:'2002–2006',events:[{id:'as02a',label:'Skyddsbehov och humanitära skäl',desc:'Riksdagen röstade om definitionen av skyddsbehov och humanitära skäl.'}]}
+    {period:'2018–2022',events:[{id:'as18a',date:'2021-06-23',label:'Förlängning av den tillfälliga lagen',desc:'Riksdagen röstade om att förlänga den tillfälliga asyllagstiftning som infördes 2016.'}]},
+    {period:'2014–2018',events:[{id:'as14a',date:'2016-06-21',label:'Tillfällig begränsningslag 2016',desc:'S-MP-regeringen bröt med traditionen och begränsade asylrätten tillfälligt.'}]},
+    {period:'2010–2014',events:[{id:'as10a',date:'2012-11-28',label:'Gymnasielagen',desc:'Riksdagen röstade om rätten för ensamkommande ungdomar att stanna kvar för att slutföra gymnasiet.'}]},
+    {period:'2006–2010',events:[{id:'as06a',date:'2006-12-14',label:'Ny instans- och processordning',desc:'Riksdagen röstade om en reform av asylprocessen med migrationsdomstolar.'}]},
+    {period:'2002–2006',events:[{id:'as02a',date:'2005-03-16',label:'Skyddsbehov och humanitära skäl',desc:'Riksdagen röstade om definitionen av skyddsbehov och humanitära skäl.'}]}
   ],
   'Etablering':[
     {period:'2022–2026',events:[
@@ -1136,28 +1259,28 @@ const voteSchema = {
   ],
   'Betygssystem':[
     {period:'2022–2026',events:[
-      {id:'bs22a',label:'Betyg från årskurs 4',desc:'M-regeringen sänkte åldern för betyg från år 6 till år 4.'},
-      {id:'bs22b',label:'Fler nationella prov',desc:'Antalet obligatoriska nationella prov utökades för likvärdig bedömning.'}
+      {id:'bs22a',date:'2022-11-23',label:'Betyg från årskurs 4',desc:'M-regeringen sänkte åldern för betyg från år 6 till år 4.'},
+      {id:'bs22b',date:'2022-11-23',label:'Fler nationella prov',desc:'Antalet obligatoriska nationella prov utökades för likvärdig bedömning.'}
     ]},
-    {period:'2018–2022',events:[{id:'bs18a',label:'Lättnader i betygssystemet',desc:'S-regeringen justerade betygssystemet för att ge lärare mer tolkningsutrymme.'}]},
-    {period:'2014–2018',events:[{id:'bs14a',label:'A–F-betygssystemet',desc:'Det nya betygssystemet utvärderades och riksdagen röstade om förändringar.'}]},
-    {period:'2010–2014',events:[{id:'bs10a',label:'Betyg från år 6',desc:'Alliansen sänkte åldern för obligatoriska betyg från år 8 till år 6.'}]},
-    {period:'2006–2010',events:[{id:'bs06a',label:'Reform av betygssystem',desc:'Alliansen beställde utredning om nytt betygssystem som ledde till A–F-reformen.'}]},
-    {period:'2002–2006',events:[{id:'bs02a',label:'Målrelaterat betygssystem',desc:'Det målrelaterade systemet utvärderades med kritik om otydlighet och betygsinflation.'}]}
+    {period:'2018–2022',events:[{id:'bs18a',date:'2021-03-25',label:'Lättnader i betygssystemet',desc:'S-regeringen justerade betygssystemet för att ge lärare mer tolkningsutrymme.'}]},
+    {period:'2014–2018',events:[{id:'bs14a',date:'2017-06-14',label:'A–F-betygssystemet',desc:'Det nya betygssystemet utvärderades och riksdagen röstade om förändringar.'}]},
+    {period:'2010–2014',events:[{id:'bs10a',date:'2010-06-16',label:'Betyg från år 6',desc:'Alliansen sänkte åldern för obligatoriska betyg från år 8 till år 6.'}]},
+    {period:'2006–2010',events:[{id:'bs06a',date:'2008-06-18',label:'Reform av betygssystem',desc:'Alliansen beställde utredning om nytt betygssystem som ledde till A–F-reformen.'}]},
+    {period:'2002–2006',events:[{id:'bs02a',date:'2004-05-19',label:'Målrelaterat betygssystem',desc:'Det målrelaterade systemet utvärderades med kritik om otydlighet och betygsinflation.'}]}
   ],
   'Friskolor':[
     {period:'2022–2026',events:[
-      {id:'fs22a',label:'Tidöavtalets skydd för friskolesystemet',desc:'Tidöavtalet skyddade friskolereformen från inskränkningar.'},
-      {id:'fs22b',label:'Förbud mot vinstuttag i välfärden',desc:'Motioner om att förbjuda aktiebolag från att driva skola med vinstintresse.'}
+      {id:'fs22a',date:'2022-12-14',label:'Tidöavtalets skydd för friskolesystemet',desc:'Tidöavtalet skyddade friskolereformen från inskränkningar.'},
+      {id:'fs22b',date:'2022-12-14',label:'Förbud mot vinstuttag i välfärden',desc:'Motioner om att förbjuda aktiebolag från att driva skola med vinstintresse.'}
     ]},
     {period:'2018–2022',events:[
-      {id:'fs18a',label:'Reepalus utredning om vinsttak',desc:'Utredning om att begränsa vinstuttag i välfärden, inklusive friskolor.'},
-      {id:'fs18b',label:'Förbud mot vinst i skolan',desc:'V:s återkommande motioner om totalt vinstförbud i skolan.'}
+      {id:'fs18a',date:'2019-03-14',label:'Reepalus utredning om vinsttak',desc:'Utredning om att begränsa vinstuttag i välfärden, inklusive friskolor.'},
+      {id:'fs18b',date:'2019-03-14',label:'Förbud mot vinst i skolan',desc:'V:s återkommande motioner om totalt vinstförbud i skolan.'}
     ]},
-    {period:'2014–2018',events:[{id:'fs14a',label:'Reglering av vinstuttag',desc:'S föreslog skärpta regler för hur mycket friskolor får ta ut i vinst.'}]},
-    {period:'2010–2014',events:[{id:'fs10a',label:'Utvidgning av friskolesystemet',desc:'Alliansen utvidgade möjligheterna att starta friskolor och stärkte skolpengen.'}]},
-    {period:'2006–2010',events:[{id:'fs06a',label:'Friskolereformen och likvärdiga villkor',desc:'Debatt om likvärdiga villkor mellan kommunala och fristående skolor.'}]},
-    {period:'2002–2006',events:[{id:'fs02a',label:'Vinst i skolan',desc:'S ville begränsa friskolors vinstmöjligheter sedan reformen 1992.'}]}
+    {period:'2014–2018',events:[{id:'fs14a',date:'2016-06-22',label:'Reglering av vinstuttag',desc:'S föreslog skärpta regler för hur mycket friskolor får ta ut i vinst.'}]},
+    {period:'2010–2014',events:[{id:'fs10a',date:'2013-05-23',label:'Utvidgning av friskolesystemet',desc:'Alliansen utvidgade möjligheterna att starta friskolor och stärkte skolpengen.'}]},
+    {period:'2006–2010',events:[{id:'fs06a',date:'2008-05-21',label:'Friskolereformen och likvärdiga villkor',desc:'Debatt om likvärdiga villkor mellan kommunala och fristående skolor.'}]},
+    {period:'2002–2006',events:[{id:'fs02a',date:'2004-05-19',label:'Vinst i skolan',desc:'S ville begränsa friskolors vinstmöjligheter sedan reformen 1992.'}]}
   ],
   'Lärarbrist':[
     {period:'2022–2026',events:[
@@ -1172,14 +1295,14 @@ const voteSchema = {
   ],
   'Lärarlöner':[
     {period:'2022–2026',events:[
-      {id:'ll22a',label:'Karriärtjänster för lärare',desc:'Systemet med förstelärare och lektorer för att höja status och lön.'},
-      {id:'ll22b',label:'Ordningsregler och arbetsro',desc:'Skärpta befogenheter för lärare att upprätthålla ordning och visa ut störande elever.'}
+      {id:'ll22a',date:'2022-11-23',label:'Karriärtjänster för lärare',desc:'Systemet med förstelärare och lektorer för att höja status och lön.'},
+      {id:'ll22b',date:'2023-03-01',label:'Ordningsregler och arbetsro',desc:'Skärpta befogenheter för lärare att upprätthålla ordning och visa ut störande elever.'}
     ]},
-    {period:'2018–2022',events:[{id:'ll18a',label:'Statligt lärarlönelyft (3 mdr)',desc:'S-regeringen satsade 3 miljarder för att höja lönerna för lärare med för låg lön.'}]},
-    {period:'2014–2018',events:[{id:'ll14a',label:'Karriärtjänster lektorer och förstelärare',desc:'Alliansen introducerade karriärtjänsterna för att göra yrket mer attraktivt.'}]},
-    {period:'2010–2014',events:[{id:'ll10a',label:'Lärarlegitimation',desc:'Lärarlegitimationen 2011 — obehöriga fick inte längre ge betyg. Syftade till att höja yrkets status.'}]},
-    {period:'2006–2010',events:[{id:'ll06a',label:'Lärarlöner och karriärvägar',desc:'Alliansen beställde utredningar om hur lärarlöner och karriärvägar kunde reformeras.'}]},
-    {period:'2002–2006',events:[{id:'ll02a',label:'Lärarbehörighet och löner',desc:'S diskuterade krav på lärarbehörighet och lönestrategier. Bristen på behöriga lärare var tydlig.'}]}
+    {period:'2018–2022',events:[{id:'ll18a',date:'2020-03-18',label:'Statligt lärarlönelyft (3 mdr)',desc:'S-regeringen satsade 3 miljarder för att höja lönerna för lärare med för låg lön.'}]},
+    {period:'2014–2018',events:[{id:'ll14a',date:'2015-06-17',label:'Karriärtjänster lektorer och förstelärare',desc:'Alliansen introducerade karriärtjänsterna för att göra yrket mer attraktivt.'}]},
+    {period:'2010–2014',events:[{id:'ll10a',date:'2012-02-01',label:'Lärarlegitimation',desc:'Lärarlegitimationen 2011 — obehöriga fick inte längre ge betyg. Syftade till att höja yrkets status.'}]},
+    {period:'2006–2010',events:[{id:'ll06a',date:'2008-06-18',label:'Lärarlöner och karriärvägar',desc:'Alliansen beställde utredningar om hur lärarlöner och karriärvägar kunde reformeras.'}]},
+    {period:'2002–2006',events:[{id:'ll02a',date:'2004-05-19',label:'Lärarbehörighet och löner',desc:'S diskuterade krav på lärarbehörighet och lönestrategier. Bristen på behöriga lärare var tydlig.'}]}
   ]
 };
 
@@ -1502,6 +1625,256 @@ const mockData = {
     'Vårdköer':{overall:'for',stance:'Miljöpartiet vill korta vårdköerna med ökade resurser och bättre arbetsvillkor.',source:{label:'MP.se',url:'https://www.mp.se/politik/'},stanceMap:{vk22a:'for',vk18a:'for',vk14a:'for',vk10a:'against',vk06a:'mixed',vk02a:'for'}}
   }
 };
+
+// ─── PARTIKOMPASS JSON (ladda från GitHub) ────────────────────────────────────
+let pkData = null; // { sammanfattning, roster, hardkodade_amnen }
+let pkLoading = false;
+
+async function loadPkData() {
+  if (pkData) return pkData;
+  if (pkLoading) {
+    // Vänta tills laddning är klar
+    while (pkLoading) await new Promise(r => setTimeout(r, 50));
+    return pkData;
+  }
+  pkLoading = true;
+  try {
+    // Försök ladda gzippad fil från GitHub Pages
+    const url = 'partikompass.json.gz';
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    // Packa upp gzip med DecompressionStream (stöds i moderna webbläsare)
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    writer.write(new Uint8Array(buf));
+    writer.close();
+    const reader = ds.readable.getReader();
+    const chunks = [];
+    let done = false;
+    while (!done) {
+      const { value, done: d } = await reader.read();
+      if (value) chunks.push(value);
+      done = d;
+    }
+    const text = new TextDecoder().decode(
+      chunks.reduce((a, b) => { const c = new Uint8Array(a.length + b.length); c.set(a); c.set(b, a.length); return c; })
+    );
+    pkData = JSON.parse(text);
+  } catch(e) {
+    console.error('Kunde inte ladda partikompass.json.gz:', e);
+    pkData = { sammanfattning: [], roster: {}, hardkodade_amnen: {} };
+  }
+  pkLoading = false;
+  return pkData;
+}
+
+// Ladda JSON i bakgrunden direkt när sidan öppnas
+loadPkData();
+
+// ─── DATABASSÖKNING ───────────────────────────────────────────────────────────
+let currentSearchKey = null; // år|id för vald sökträff
+
+async function runDatabaseSearch() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (!query) return;
+
+  // Kolla att partier är valda
+  if (selectedParties.size === 0) {
+    triggerShake(document.getElementById('partyListContainer'));
+    return;
+  }
+
+  const resultsArea = document.getElementById('searchResultsArea');
+  const hitsList = document.getElementById('searchHitsList');
+  const label = document.getElementById('searchResultLabel');
+  const clearBtn = document.getElementById('searchClearBtn');
+
+  hitsList.innerHTML = '<div style="font-size:.8rem;color:var(--muted);padding:8px 0;">Söker…</div>';
+  resultsArea.classList.add('visible');
+  document.getElementById('topicList').classList.add('search-mode');
+  clearBtn.classList.add('visible');
+  currentSearchKey = null;
+
+  const data = await loadPkData();
+  const sammanfattning = data.sammanfattning || [];
+
+  // Filtrera på sökord i titel + beslut
+  const traffar = sammanfattning.filter(r => {
+    const text = ((r.t || '') + ' ' + (r.b || '')).toLowerCase();
+    return text.includes(query);
+  });
+
+  // Sortera senaste år först
+  traffar.sort((a, b) => b.a.localeCompare(a.a));
+
+  label.textContent = `${traffar.length} träffar på "${query}"`;
+
+  if (traffar.length === 0) {
+    hitsList.innerHTML = '<div class="no-search-results">Inga omröstningar hittades. Prova ett annat sökord.</div>';
+    return;
+  }
+
+  hitsList.innerHTML = traffar.map(r => {
+    const key = `${r.a}|${r.i}`;
+    const beslutKort = r.b ? r.b.substring(0, 120) + (r.b.length > 120 ? '…' : '') : '';
+    return `<div class="search-hit" data-key="${key}" onclick="selectSearchHit('${key}')">
+      <div class="search-hit-title">${r.t || r.i}</div>
+      <div class="search-hit-meta">${r.a} · ${r.i}</div>
+      ${beslutKort ? `<div class="search-hit-beslut">${beslutKort}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function selectSearchHit(key) {
+  currentSearchKey = key;
+
+  // Markera aktiv träff
+  document.querySelectorAll('.search-hit').forEach(el => {
+    el.classList.toggle('active', el.dataset.key === key);
+  });
+
+  const data = await loadPkData();
+  const roster = data.roster || {};
+  const sammanfattning = data.sammanfattning || [];
+
+  // Hitta sammanfattning för detta key
+  const [ar, id] = key.split('|');
+  const sammRad = sammanfattning.find(r => r.a === ar && r.i === id);
+
+  // Hämta röstdata
+  const rosterData = roster[key] || [];
+
+  // Bygg partikort för valda partier
+  const resultsEl = document.getElementById('results');
+  const partiesToShow = [...selectedParties];
+
+  if (partiesToShow.length === 0) {
+    triggerShake(document.getElementById('partyListContainer'));
+    return;
+  }
+
+  const cards = partiesToShow.map(pk => {
+    const partyObj = parties.find(p => p.key === pk);
+    if (!partyObj) return '';
+
+    // Filtrera ledamöter för detta parti
+    const partyRoster = rosterData.filter(r => normalizeParti(r.p) === pk);
+
+    const forCount     = partyRoster.filter(r => normalizeRost(r.r) === 'for').length;
+    const againstCount = partyRoster.filter(r => normalizeRost(r.r) === 'against').length;
+    const abstainCount = partyRoster.filter(r => normalizeRost(r.r) === 'abstain').length;
+    const total = partyRoster.length;
+
+    let overall = 'mixed';
+    if (forCount > againstCount && forCount > abstainCount) overall = 'for';
+    else if (againstCount > forCount && againstCount > abstainCount) overall = 'against';
+
+    const pillClass = overall === 'for' ? 'is-for' : overall === 'against' ? 'is-against' : 'is-mixed';
+    const pillLabel = overall === 'for' ? 'Partiet är för' : overall === 'against' ? 'Partiet är emot' : 'Partiets ståndpunkt är oklar';
+
+    // Lampor
+    const maxLamps = 90;
+    const scale = total > maxLamps ? maxLamps / total : 1;
+    const lamps = partyRoster.slice(0, maxLamps).map(r => {
+      const v = normalizeRost(r.r);
+      return `<span class="lamp ${v}"></span>`;
+    }).join('');
+    const lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps}</div>`;
+
+    const cardId = `sc-${pk}-${Date.now()}`;
+    return `<div class="result-card">
+      <div class="card-header">
+        <div class="party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${pk}</div>
+        <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${id} · ${ar}</div></div>
+      </div>
+      <div class="card-body">
+        <div class="section-label">Partiets röst</div>
+        <div class="stance-summary"><span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel}</span></div>
+        ${sammRad?.b ? `<button class="expand-btn" onclick="toggleDetail('${cardId}',this)">Läs mer ▾</button>
+        <div class="stance-detail" id="${cardId}">${sammRad.b}</div>` : ''}
+        <div class="divider"></div>
+        <div class="section-label">Ledamöternas röster (${total} st)</div>
+        <div class="vote-history">
+          <div class="vote-row vote-item clickable-vote" onclick="showSearchRosterDetail('${key}','${pk}')">
+            ${lampsHtml}
+            <span class="vote-text">För: ${forCount} · Emot: ${againstCount} · Frånv: ${abstainCount}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  resultsEl.innerHTML = `<div class="results-columns">${cards}</div>`;
+  document.querySelectorAll('.result-card').forEach((el, i) => { el.style.animationDelay = `${i * 80}ms`; });
+
+  // Visa beslut i korthet i informationsrutan
+  if (sammRad) {
+    document.getElementById('detailEventLabel').textContent = sammRad.t || id;
+    document.getElementById('detailDesc').textContent = sammRad.b || 'Ingen beskrivning tillgänglig.';
+    document.getElementById('detailParties').innerHTML = '';
+    document.getElementById('detailMembersSection').style.display = 'none';
+    document.getElementById('eventDetailPlaceholder').classList.add('hidden');
+    document.getElementById('eventDetailInner').classList.remove('hidden');
+  }
+}
+
+async function showSearchRosterDetail(key, partyKey) {
+  const data = await loadPkData();
+  const rosterData = (data.roster || {})[key] || [];
+  const partyRoster = rosterData.filter(r => normalizeParti(r.p) === partyKey);
+  const partyObj = parties.find(p => p.key === partyKey);
+
+  const header = document.getElementById('detailMembersHeader');
+  const list = document.getElementById('detailMembersList');
+  const [ar] = key.split('|');
+
+  header.textContent = `${partyObj?.name || partyKey} — ledamöter ${ar}`;
+  list.innerHTML = partyRoster.map(r => {
+    const v = normalizeRost(r.r);
+    const color = v==='for'?'#3ecb55':v==='against'?'#e84040':'#f0b830';
+    const label = v==='for'?'För':v==='against'?'Emot':'Frånv.';
+    return `<div class="detail-member-row">
+      <span>${r.n}</span>
+      <span style="display:flex;align-items:center;gap:5px;color:${color};font-size:.7rem;">
+        ${label}<span class="member-lamp ${v}"></span>
+      </span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('detailMembersSection').style.display = 'block';
+}
+
+function clearDatabaseSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchResultsArea').classList.remove('visible');
+  document.getElementById('topicList').classList.remove('search-mode');
+  document.getElementById('searchClearBtn').classList.remove('visible');
+  currentSearchKey = null;
+  document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
+  closeEventDetail();
+}
+
+// Hjälpfunktioner för att normalisera partinamn och röstvärden från JSON
+function normalizeParti(p) {
+  if (!p) return '';
+  const map = {
+    'M':'M','S':'S','V':'V','SD':'SD','C':'C','KD':'KD','L':'L','MP':'MP',
+    'Moderaterna':'M','Socialdemokraterna':'S','Vänsterpartiet':'V',
+    'Sverigedemokraterna':'SD','Centerpartiet':'C','Kristdemokraterna':'KD',
+    'Liberalerna':'L','Miljöpartiet':'MP','FP':'L','fp':'L','m':'M','s':'S',
+    'v':'V','sd':'SD','c':'C','kd':'KD','l':'L','mp':'MP'
+  };
+  return map[p.trim()] || p.trim().toUpperCase();
+}
+
+function normalizeRost(r) {
+  if (!r) return 'abstain';
+  const v = r.trim().toLowerCase();
+  if (v === 'ja' || v === 'yes' || v === 'for' || v === 'för') return 'for';
+  if (v === 'nej' || v === 'no' || v === 'against' || v === 'emot') return 'against';
+  return 'abstain'; // Frånvarande, Avstår etc
+}
 
 async function fetchPartyStance(partyKey, sub) {
   if (!window._partiesData) {
