@@ -242,6 +242,7 @@
   .db-vote-row.empty:hover { background:none; }
   .db-vote-meta { font-size:.62rem; color:var(--accent); font-weight:600; margin-bottom:1px; }
   .db-vote-title { font-size:.78rem; color:var(--text); line-height:1.4; margin-bottom:3px; min-height:2.2em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .db-vote-lamps { display:grid; grid-template-columns:repeat(10,7px); gap:2px; width:88px; min-height:calc(12*9px); }
   .db-vote-counts { font-size:.68rem; color:var(--muted); margin-top:2px; }
 
   /* ─── CARD REMOVE BUTTON ─────────────────────────────────────────────────── */
@@ -409,7 +410,8 @@
 </div>
 
 <script>
-const LAST_UPDATED = "2026-06-07 02:10"; // Uppdatera detta datum vid varje push
+// ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
+const SITE_VERSION = "V1";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -491,7 +493,7 @@ parties.forEach(p => {
   if (p.key === 'V') {
     const ts = document.createElement('div');
     ts.style.cssText = 'font-size:.58rem;color:var(--muted);padding:2px 4px 8px 4px;opacity:.7;border-bottom:1px solid var(--border);margin-bottom:4px;';
-    ts.textContent = `Uppdaterad: ${LAST_UPDATED}`;
+    ts.textContent = SITE_VERSION;
     partyList.appendChild(ts);
   }
 });
@@ -1830,8 +1832,8 @@ function renderDbResults() {
         </div>`;
       }
 
-      const lamps = rd.slice(0,90).map(m => `<span class="lamp ${normRost(m.r)}"></span>`).join('');
-      const lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps}</div>`;
+      const lamps = rd.slice(0,120).map(m => `<span class="lamp ${normRost(m.r)}"></span>`).join('');
+      const lampsHtml = `<div class="db-vote-lamps">${lamps}</div>`;
 
       return `<div class="db-vote-row" onclick="showDbDetail('${safeKey}','${pk}','${safeTitle}')">
         <div class="db-vote-meta">${r.a} · ${r.i}</div>
