@@ -420,7 +420,7 @@
 
 <script>
 // ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
-const SITE_VERSION = "V3";
+const SITE_VERSION = "V4";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -462,15 +462,7 @@ const topics = [
   {
     key:'forsvar-sakerhet', label:'Omvärld & Säkerhet',
     icon:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2L3 5v4c0 3.5 2.5 6.5 6 7.5 3.5-1 6-4 6-7.5V5L9 2z" stroke="currentColor" stroke-width="1.3"/><path d="M6 9l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    subs:[
-      'Försvarsbudget','NATO',
-      {group:'Afrika', items:['Afrikapolitik','Sudan','Somalia']},
-      {group:'Asien & Oceanien', items:['Kina','Afghanistan','Myanmar','Nordkorea']},
-      {group:'Europa', items:['Ukrainakonflikten','Ryssland','Vitryssland','Balkan']},
-      {group:'Mellanöstern', items:['Mellanösternpolitik','Gaza','Västbanken','Palestinakonflikten','Iran','Libanon','Syrien','Egypten','Hormuzsundet','Suezkanalen','Irak','Jemen','Saudiarabien']},
-      {group:'Nordamerika', items:['USA','Kanada']},
-      {group:'Sydamerika & Karibien', items:['Latinamerikapolitik','Venezuela','Kuba']},
-    ]
+    subs:['Försvarsbudget','NATO','Palestinakonflikten','Ukrainakonflikten']
   },
   {
     key:'digital-politik', label:'Digital politik',
@@ -509,7 +501,7 @@ parties.forEach(p => {
   partyList.appendChild(btn);
   if (p.key === 'V') {
     const ts = document.createElement('div');
-    ts.style.cssText = 'font-size:.58rem;color:var(--muted);padding:2px 4px 8px 4px;opacity:.7;border-bottom:1px solid var(--border);margin-bottom:4px;';
+    ts.style.cssText = 'font-size:.58rem;color:#c8f060;padding:2px 4px 8px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;font-weight:600;';
     ts.textContent = SITE_VERSION;
     partyList.appendChild(ts);
   }
@@ -1781,11 +1773,11 @@ function normRost(r) {
   return 'abstain';
 }
 function stanceFromCounts(forC, agC, total) {
-  if (total===0) return {overall:'mixed', pct:0};
-  const fp = forC/total*100, ap = agC/total*100;
-  if (fp>=70) return {overall:'for', pct:Math.round(fp)};
-  if (ap>=70) return {overall:'against', pct:Math.round(ap)};
-  return {overall:'mixed', pct:Math.round(Math.max(fp,ap))};
+  // Abstår/frånvaro räknas som negativt — endast for vs (against+abstain)
+  if (total===0) return {overall:'against', pct:0};
+  const fp = forC/total*100;
+  const pct = Math.round(fp);
+  return forC > (total - forC) ? {overall:'for', pct} : {overall:'against', pct: 100-pct};
 }
 function pctStr(c, total) {
   if (total===0) return '0%';
@@ -1937,7 +1929,7 @@ function renderDbResults() {
     const {overall, pct} = stanceFromCounts(totalFor, totalAg, total);
     const pillClass = overall==='for'?'is-for':overall==='against'?'is-against':'is-mixed';
     const recentCount = recentFive.length;
-    const pillLabel = overall==='for'?'Partiet är för':overall==='against'?'Partiet är emot':'Oklar ståndpunkt';
+    const pillLabel = overall==='for'?'Partiet är för':'Partiet är emot';
 
     const rows = dbUnika.map(r => {
       const key = `${r.a}|${r.i}`;
@@ -1965,7 +1957,7 @@ function renderDbResults() {
         <div class="db-vote-meta">${r.a} · ${r.i}</div>
         <div class="db-vote-title">${highlight(r.t||r.i)}</div>
         ${lampsHtml}
-        <div class="db-vote-counts">${forC} (${pctStr(forC,rowTotal)}) för · ${agC} (${pctStr(agC,rowTotal)}) emot · ${abC} frånv.</div>
+        <div class="db-vote-counts">${forC} (${pctStr(forC,rowTotal)}) för · ${agC} (${pctStr(agC,rowTotal)}) emot · ${abC} avstår</div>
       </div>`;
     }).join('');
 
