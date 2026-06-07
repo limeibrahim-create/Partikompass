@@ -36,7 +36,9 @@
     width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:18px;
     padding:28px 16px 40px 16px; position:sticky; top:0; height:100vh;
     overflow-y:auto; border-right:1px solid var(--border); background:var(--bg);
+    scrollbar-width:none;
   }
+  .left-panel::-webkit-scrollbar { display:none; }
   .logo-block { padding-bottom:4px; border-bottom:1px solid var(--border); }
   .logo-line { display:flex; align-items:center; gap:9px; margin-bottom:3px; }
   .logo-mark { width:9px; height:9px; background:var(--accent); border-radius:50%; flex-shrink:0; animation:pulse 2s ease-in-out infinite; }
@@ -74,7 +76,7 @@
   .detail-party-badge { width:24px; height:24px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:.55rem; font-weight:800; flex-shrink:0; }
   .detail-close { background:none; border:none; color:var(--muted); font-size:.75rem; cursor:pointer; float:right; padding:0; line-height:1; opacity:.7; transition:opacity .15s; }
   .detail-close:hover { opacity:1; }
-  .results-col { flex:1; min-width:0; padding:28px 32px 80px 28px; border-left:1px solid var(--border); overflow-x:auto; }
+  .results-col { flex:1; min-width:0; padding:28px 32px 80px 28px; border-left:1px solid var(--border); }
   .step-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .step-badge { width:19px; height:19px; border-radius:50%; background:var(--surface2); border:1px solid var(--border); font-size:.58rem; font-weight:700; color:var(--muted); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .step-badge.active { background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -183,7 +185,7 @@
   .vote-text { line-height:1.55; color:#b0b6c4; padding-top:3px; flex:1; }
   /* Member list in detail panel */
   .detail-members-header { font-size:.6rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:14px 0 6px 0; }
-  .detail-members-list { display:flex; flex-direction:column; gap:3px; max-height:300px; overflow-y:auto; padding-right:16px; }
+  .detail-members-list { display:flex; flex-direction:column; gap:3px; max-height:390px; overflow-y:auto; padding-right:16px; overscroll-behavior:contain; }
   .detail-member-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.75rem; color:#b0b6c4; padding:3px 0; border-bottom:1px solid rgba(42,45,53,.5); }
   .detail-member-row:last-child { border-bottom:none; }
   .member-lamp { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
@@ -261,14 +263,13 @@
   .vote-period-group:first-child .vote-period-header { margin-top:0; }
 
   /* ─── MEMBER LIST HEIGHT ─────────────────────────────────────────────────── */
-  .detail-members-list { max-height:390px; } /* 30% more than 300px */
 
-  /* ─── SCROLL BEHAVIOUR ───────────────────────────────────────────────────── */
-  .event-detail-panel, .controls-col, .results-col { overscroll-behavior:contain; }
-
-  /* ─── CARD ALIGNMENT (fixed heights for comparable sections) ────────────── */
-  .db-card-stance { min-height:64px; display:flex; flex-direction:column; justify-content:flex-start; }
-  .db-card-header-section { min-height:44px; }
+  /* ─── CARD ALIGNMENT - grid subgrid approach ────────────────────────────── */
+  .results-columns { display:flex; gap:14px; align-items:flex-start; width:max-content; }
+  .result-card { width:300px; flex-shrink:0; display:flex; flex-direction:column; }
+  .db-card-top { display:contents; }
+  /* Fixed height sections for alignment */
+  .card-stance-section { min-height:60px; }
 
   /* ─── DRAG AND DROP ──────────────────────────────────────────────────────── */
   .result-card { cursor:default; user-select:none; }
@@ -288,10 +289,6 @@
 
   /* ─── SEARCH HIGHLIGHT ───────────────────────────────────────────────────── */
   .search-highlight { font-weight:700; color:#60d0f0; }
-
-  /* ─── MASTER SCROLL (whole page scrolls when hovering bg) ───────────────── */
-  .top-bar { overflow:visible; }
-  .wrapper { height:auto; }
 
   @media(max-width:900px){
     .right-panel{flex-direction:column;}
@@ -489,6 +486,14 @@ parties.forEach(p => {
   btn.innerHTML = `<div class="party-logo" style="background:${p.bg};color:${p.fg};">${p.key}</div><span class="party-name">${p.name}</span><span class="party-check">✓</span>`;
   btn.addEventListener('click', () => toggleParty(p.key));
   partyList.appendChild(btn);
+  if (p.key === 'V') {
+    const ts = document.createElement('div');
+    ts.style.cssText = 'font-size:.58rem;color:var(--muted);padding:2px 4px 8px 4px;opacity:.7;border-bottom:1px solid var(--border);margin-bottom:4px;';
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    ts.textContent = `Uppdaterad: ${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    partyList.appendChild(ts);
+  }
 });
 
 function toggleParty(key) {
@@ -1839,17 +1844,21 @@ function renderDbResults() {
     return `<div class="result-card" draggable="true" data-pk="${pk}" id="card-col-${pk}">
       <div class="card-drag-handle" title="Dra för att flytta"></div>
       <button class="card-remove-btn" onclick="removePartyFromResults('${pk}')" title="Ta bort">✕</button>
-      <div class="card-header db-card-header-section">
-        <div class="party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${pk}</div>
-        <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${dbUnika.length} omröstningar</div></div>
-      </div>
-      <div class="card-body">
-        <div class="section-label">Vad säger partiet?</div>
-        <div class="stance-summary db-card-stance">
-          <span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel} <span style="font-size:.72rem;opacity:.8;">(${pct}%)</span></span>
+      <div class="card-top-section">
+        <div class="card-header">
+          <div class="party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${pk}</div>
+          <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${dbUnika.length} omröstningar</div></div>
         </div>
-        <div class="divider"></div>
-        <div class="section-label" style="text-align:center;font-weight:700;font-size:.68rem;">Rösthistorik</div>
+        <div class="card-body" style="padding-bottom:0;">
+          <div class="section-label">Vad säger partiet?</div>
+          <div class="stance-summary">
+            <span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel} <span style="font-size:.72rem;opacity:.8;">(${pct}%)</span></span>
+          </div>
+          <div class="divider" style="margin-bottom:0;"></div>
+          <div class="section-label" style="text-align:center;font-weight:700;font-size:.68rem;margin-bottom:8px;">Rösthistorik</div>
+        </div>
+      </div>
+      <div class="card-body" style="padding-top:0;">
         <div class="vote-history">${rows}</div>
       </div>
     </div>`;
@@ -1859,19 +1868,16 @@ function renderDbResults() {
   resultsEl.innerHTML = `<div class="results-columns" id="dbResultsCols">${cols}</div>`;
   document.querySelectorAll('.result-card').forEach((el,i) => { el.style.animationDelay=`${i*60}ms`; });
 
-  // Equalize heights of header+stance sections across cards
+  // Equalize heights — sync the entire top section (header + stance + divider)
   requestAnimationFrame(() => {
     const cards = document.querySelectorAll('#dbResultsCols .result-card');
-    // Equalize stance section height
-    let maxStance = 0;
-    cards.forEach(card => {
-      const s = card.querySelector('.db-card-stance');
-      if (s) { s.style.minHeight=''; maxStance = Math.max(maxStance, s.offsetHeight); }
-    });
-    cards.forEach(card => {
-      const s = card.querySelector('.db-card-stance');
-      if (s) s.style.minHeight = maxStance + 'px';
-    });
+    // Reset
+    cards.forEach(c => { const s = c.querySelector('.card-top-section'); if(s) s.style.minHeight=''; });
+    // Find max
+    let maxH = 0;
+    cards.forEach(c => { const s = c.querySelector('.card-top-section'); if(s) maxH = Math.max(maxH, s.offsetHeight); });
+    // Apply
+    cards.forEach(c => { const s = c.querySelector('.card-top-section'); if(s) s.style.minHeight = maxH+'px'; });
   });
 
   // Drag and drop
@@ -1903,7 +1909,7 @@ function showDbDetail(key, partyKey, titel) {
 
   const descEl = document.getElementById('detailDesc');
   const fullText = sammRad?.b || 'Ingen beskrivning tillgänglig.';
-  descEl.textContent = fullText;
+  descEl.innerHTML = highlight(fullText);
   descEl.classList.remove('detail-desc-collapsed');
 
   const toggle = document.getElementById('detailDescToggle');
@@ -2007,18 +2013,7 @@ function initDragDrop() {
   });
 }
 
-// ─── HORIZONTAL SCROLL — always works regardless of hover position ────────────
-document.addEventListener('DOMContentLoaded', () => {
-  const resultsCol = document.querySelector('.results-col');
-  if (!resultsCol) return;
-  // Allow horizontal scroll with shift+wheel anywhere on page
-  window.addEventListener('wheel', e => {
-    if (e.shiftKey) {
-      e.preventDefault();
-      resultsCol.scrollLeft += e.deltaY;
-    }
-  }, { passive: false });
-});
+
 
 async function fetchPartyStance(partyKey, sub) {
   if (!window._partiesData) {
