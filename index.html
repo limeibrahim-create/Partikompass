@@ -420,7 +420,7 @@
 
 <script>
 // ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
-const SITE_VERSION = "V5";
+const SITE_VERSION = "V7";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -1811,7 +1811,7 @@ async function runDbSearch() {
   });
   traffar.sort((a,b) => b.a.localeCompare(a.a));
   const sedda = new Set();
-  dbUnika = traffar.filter(r => { if (sedda.has(r.i)) return false; sedda.add(r.i); return true; });
+  dbUnika = traffar.filter(r => { const k=r.u||r.i; if (sedda.has(k)) return false; sedda.add(k); return true; });
 
   renderDbResults();
 }
@@ -1974,7 +1974,7 @@ function renderDbResults() {
           <div class="stance-summary">
             <span class="stance-pill ${pillClass}" title="Baseras på de ${recentCount} senaste omröstningarna"><span class="stance-dot"></span>${pillLabel} <span style="font-size:.72rem;opacity:.8;">(${pct}%)</span></span>
           </div>
-          <div style="font-size:.6rem;color:var(--muted);margin-top:-2px;margin-bottom:4px;">Baseras på ${recentCount} senaste omröstning${recentCount===1?'':'ar'}</div>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:-2px;margin-bottom:4px;">Baserat på röstresultatet för huvudförslaget i riksdagens ${recentCount} senaste omröstning${recentCount===1?'':'ar'} ang. valt ämne</div>
           <div class="divider" style="margin-bottom:0;"></div>
           <div class="section-label" style="text-align:center;font-weight:700;font-size:.68rem;margin-bottom:8px;">Rösthistorik</div>
         </div>
@@ -2041,12 +2041,22 @@ function showDbDetail(key, partyKey, titel) {
   const color = forC>agC?'#4ee86a':agC>forC?'#f07070':'#f0c040';
   const label = forC>agC?'Röstade för':agC>forC?'Röstade emot':'Delad röst';
 
-  document.getElementById('detailParties').innerHTML = partyObj ? `
-    <div class="detail-party-row" onclick="showDbMembers('${key}','${partyKey}')" style="cursor:pointer;">
-      <div class="detail-party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${partyKey}</div>
-      <span style="flex:1;">${partyObj.name}</span>
-      <span style="color:${color};font-size:.75rem;font-weight:500;">${label}</span>
-    </div>` : '';
+  // Visa alla valda partier i detailParties
+  const rosterDataAll = (pkData?.roster||{})[key]||[];
+  document.getElementById('detailParties').innerHTML = [...selectedParties].map(pk2 => {
+    const pr2 = rosterDataAll.filter(m => normParti(m.p)===pk2);
+    const po2 = parties.find(p => p.key===pk2);
+    if (!po2 || pr2.length===0) return '';
+    const f2 = pr2.filter(m => normRost(m.r)==='for').length;
+    const a2 = pr2.filter(m => normRost(m.r)==='against').length;
+    const c2 = f2>a2?'#4ee86a':a2>f2?'#f07070':'#f0c040';
+    const l2 = f2>a2?'Röstade för':a2>f2?'Röstade emot':'Delad röst';
+    return `<div class="detail-party-row" onclick="showDbMembers('${key}','${pk2}')" style="cursor:pointer;">
+      <div class="detail-party-badge" style="background:${po2.bg};color:${po2.fg};">${pk2}</div>
+      <span style="flex:1;">${po2.name}</span>
+      <span style="color:${c2};font-size:.75rem;font-weight:500;">${l2}</span>
+    </div>`;
+  }).join('');
 
   showDbMembers(key, partyKey);
   document.getElementById('eventDetailPlaceholder').classList.add('hidden');
@@ -2105,7 +2115,7 @@ async function runTopicSearch(sub) {
 
   // Deduplicera på id (samma logik som runDbSearch)
   const sedda = new Set();
-  dbUnika = traffar.filter(r => { if (sedda.has(r.i)) return false; sedda.add(r.i); return true; });
+  dbUnika = traffar.filter(r => { const k=r.u||r.i; if (sedda.has(k)) return false; sedda.add(k); return true; });
 
   // Sätt dbActive men töm sökfrågan så highlight inte triggas
   dbActive = true;
