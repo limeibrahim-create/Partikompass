@@ -420,7 +420,7 @@
 
 <script>
 // ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
-const SITE_VERSION = "V4";
+const SITE_VERSION = "V5";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -1919,10 +1919,10 @@ function renderDbResults() {
 
     // Beräkna overall baserat på de 5 senaste omröstningarna där partiet deltog
     let totalFor=0, totalAg=0, totalAb=0;
-    const recentVoted = dbUnika.filter(r => (roster[`${r.a}|${r.i}`]||[]).some(m => normParti(m.p)===pk));
+    const recentVoted = dbUnika.filter(r => (roster[`${r.a}|${r.i}|${r.u}`]||[]).some(m => normParti(m.p)===pk));
     const recentFive = recentVoted.slice(0, 5);
     recentFive.forEach(r => {
-      const rd = (roster[`${r.a}|${r.i}`]||[]).filter(m => normParti(m.p)===pk);
+      const rd = (roster[`${r.a}|${r.i}|${r.u}`]||[]).filter(m => normParti(m.p)===pk);
       rd.forEach(m => { const v=normRost(m.r); if(v==='for')totalFor++; else if(v==='against')totalAg++; else totalAb++; });
     });
     const total = totalFor+totalAg+totalAb;
@@ -1932,7 +1932,7 @@ function renderDbResults() {
     const pillLabel = overall==='for'?'Partiet är för':'Partiet är emot';
 
     const rows = dbUnika.map(r => {
-      const key = `${r.a}|${r.i}`;
+      const key = `${r.a}|${r.i}|${r.u}`;
       const rd = (roster[key]||[]).filter(m => normParti(m.p)===pk);
       const forC = rd.filter(m => normRost(m.r)==='for').length;
       const agC  = rd.filter(m => normRost(m.r)==='against').length;
@@ -2018,8 +2018,8 @@ function showDbDetail(key, partyKey, titel) {
   document.querySelectorAll('.db-vote-row').forEach(el => {
     el.classList.toggle('active', el.getAttribute('onclick')?.includes(`'${key}'`)||false);
   });
-  const [yearStr, idStr] = key.split('|');
-  const sammRad = (pkData?.sammanfattning||[]).find(r => r.a===yearStr && r.i===idStr);
+  const [yearStr, idStr, uuidStr] = key.split('|');
+  const sammRad = (pkData?.sammanfattning||[]).find(r => r.a===yearStr && r.i===idStr && r.u===uuidStr);
   const rosterData = (pkData?.roster||{})[key]||[];
   const partyRoster = rosterData.filter(m => normParti(m.p)===partyKey);
   const partyObj = parties.find(p => p.key===partyKey);
@@ -2096,11 +2096,11 @@ async function runTopicSearch(sub) {
   }
 
   // Bygg ett Set av "år|id"-nycklar för snabb lookup
-  const idSet = new Set(ids);
+  const idSet = new Set(ids);  // ids är nu 'år|id|uuid'-strängar
 
   // Hämta matchande rader ur sammanfattning, sortera nyast först
   const sammanfattning = pkData.sammanfattning || [];
-  const traffar = sammanfattning.filter(r => idSet.has(`${r.a}|${r.i}`));
+  const traffar = sammanfattning.filter(r => idSet.has(`${r.a}|${r.i}|${r.u}`));
   traffar.sort((a, b) => b.a.localeCompare(a.a));
 
   // Deduplicera på id (samma logik som runDbSearch)
