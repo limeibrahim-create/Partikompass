@@ -375,7 +375,7 @@
         <button class="detail-close" onclick="closeEventDetail()">✕ stäng</button>
         <div class="detail-id-line" id="detailIdLine"></div>
         <div class="detail-event-label" id="detailEventLabel"></div>
-        <div class="detail-section-label">Vad handlade det om?</div>
+        <div class="detail-section-label" id="detailWhatLabel">Vad handlade det om?</div>
         <div class="detail-desc" id="detailDesc"></div>
         <button class="detail-desc-toggle" id="detailDescToggle" onclick="toggleDetailDesc()">Dölj</button>
         <div class="detail-section-label">Hur röstade partierna?</div>
@@ -420,7 +420,7 @@
 
 <script>
 // ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
-const SITE_VERSION = "V7";
+const SITE_VERSION = "V8";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -1943,7 +1943,7 @@ function renderDbResults() {
 
       if (rd.length===0) {
         return `<div class="db-vote-row empty">
-          <div class="db-vote-meta">${r.a} · ${r.i}</div>
+          <div class="db-vote-meta">${r.a} · ${r.i} · Förslagspunkt ${r.f||1}</div>
           <div class="db-vote-title" style="color:var(--muted);font-style:italic;">${highlight(r.t||r.i)}</div>
           <div style="min-height:44px;"></div>
           <div class="db-vote-counts" style="opacity:.3;">—</div>
@@ -2025,8 +2025,11 @@ function showDbDetail(key, partyKey, titel) {
   const partyObj = parties.find(p => p.key===partyKey);
 
   const idLine = document.getElementById('detailIdLine');
-  if (idLine) idLine.textContent = `${yearStr} · ${idStr}`;
+  const fNum = sammRad?.f || 1;
+  if (idLine) idLine.textContent = `${yearStr} · ${idStr} · Förslagspunkt ${fNum}`;
   document.getElementById('detailEventLabel').textContent = sammRad?.t || titel || idStr;
+  const whatLabel = document.getElementById('detailWhatLabel');
+  if (whatLabel) whatLabel.textContent = `Vad handlade ${yearStr} ${idStr} Förslagspunkt ${fNum} om?`;
 
   const descEl = document.getElementById('detailDesc');
   const fullText = sammRad?.b || 'Ingen beskrivning tillgänglig.';
