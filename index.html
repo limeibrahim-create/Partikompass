@@ -352,7 +352,7 @@
       <div class="topics-list" id="topicList"></div>
       <button class="clear-btn" id="clearTopicBtn" onclick="clearTopic()" title="Rensa valt ämne">✕</button>
       <div id="searchBtnWrapper" onclick="handleSearchClick()" style="width:100%;cursor:not-allowed;">
-        <button class="search-btn" id="searchBtn" disabled onclick="event.stopPropagation();runSearch()">
+        <button class="search-btn" id="searchBtn" disabled onclick="event.stopPropagation();if(selectedSub)runTopicSearch(selectedSub);else runSearch()">
           Visa ståndpunkt →
         </button>
       </div>
@@ -412,7 +412,7 @@
 
 <script>
 // ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
-const SITE_VERSION = "V1";
+const SITE_VERSION = "V2";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -574,10 +574,18 @@ function selectTopic(key) {
 
 function selectSub(sub, topicKey) {
   clearDbSearch(true); // clear search, show topic instead
-  selectedSub = selectedSub === sub ? null : sub;
+  const wasSame = selectedSub === sub;
+  selectedSub = wasSame ? null : sub;
   document.querySelectorAll('.subcat-btn').forEach(b => b.classList.toggle('selected', b.dataset.sub === selectedSub));
   document.getElementById('clearTopicBtn')?.classList.toggle('visible', !!(selectedTopic || selectedSub));
   updateBtn();
+  if (selectedSub) {
+    runTopicSearch(selectedSub);
+  } else {
+    // Avvald — rensa resultaten
+    document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
+    closeEventDetail();
+  }
 }
 
 function clearTopic() {
@@ -587,6 +595,8 @@ function clearTopic() {
   document.querySelectorAll('.subcat-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('clearTopicBtn')?.classList.remove('visible');
   updateBtn();
+  document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
+  closeEventDetail();
 }
 
 function updateBtn() {
@@ -2036,6 +2046,38 @@ function clearDbSearch(silent) {
     document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
     closeEventDetail();
   }
+}
+
+// ─── TOPIC SEARCH (hårdkodade ämnen via JSON) ─────────────────────────────────
+async function runTopicSearch(sub) {
+  if (!sub) return;
+  if (selectedParties.size === 0) { triggerShake(document.getElementById('partyListContainer')); return; }
+  if (!pkReady) { while (!pkReady) await new Promise(r => setTimeout(r, 80)); }
+
+  // Hämta omröstnings-ID:n för detta ämne från JSON
+  const ids = (pkData.hardkodade_amnen || {})[sub];
+  if (!ids || ids.length === 0) {
+    document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Inga omröstningar hittades för <strong>${sub}</strong> i databasen.</p></div>`;
+    return;
+  }
+
+  // Bygg ett Set av "år|id"-nycklar för snabb lookup
+  const idSet = new Set(ids);
+
+  // Hämta matchande rader ur sammanfattning, sortera nyast först
+  const sammanfattning = pkData.sammanfattning || [];
+  const traffar = sammanfattning.filter(r => idSet.has(`${r.a}|${r.i}`));
+  traffar.sort((a, b) => b.a.localeCompare(a.a));
+
+  // Deduplicera på id (samma logik som runDbSearch)
+  const sedda = new Set();
+  dbUnika = traffar.filter(r => { if (sedda.has(r.i)) return false; sedda.add(r.i); return true; });
+
+  // Sätt dbActive men töm sökfrågan så highlight inte triggas
+  dbActive = true;
+  dbCurrentQuery = '';
+
+  renderDbResults();
 }
 
 // ─── DETAIL DESC TOGGLE ───────────────────────────────────────────────────────
