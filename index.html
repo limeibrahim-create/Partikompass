@@ -113,6 +113,14 @@
   .subcat-btn:hover { color:var(--text); border-color:#444; }
   .subcat-btn.selected { background:rgba(218,119,86,0.11); border-color:rgba(218,119,86,0.35); color:var(--text); font-weight:500; }
   .subcat-tl { display:none !important; }
+  .subcat-group { margin-bottom:6px; }
+  .subcat-group-header {
+    font-size:.58rem; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--accent); padding:8px 0 4px 4px; font-weight:600;
+    border-top:1px solid var(--border); margin-top:4px;
+  }
+  .subcat-group:first-child .subcat-group-header { border-top:none; margin-top:0; padding-top:2px; }
+  .subcat-btn-indent { padding-left:16px; }
   .clear-btn {
     display:block; width:100%; margin-top:8px; padding:5px; background:none;
     border:1px solid var(--border); border-radius:5px; color:var(--muted); font-size:.75rem;
@@ -412,7 +420,7 @@
 
 <script>
 // ── VERSION — höj med +1 vid varje push till GitHub ──────────────────────────
-const SITE_VERSION = "V2";
+const SITE_VERSION = "V3";
 
 const parties = [
   { key:'C',  name:'Centerpartiet',        bg:'#2d8a4e', fg:'#fff' },
@@ -454,7 +462,15 @@ const topics = [
   {
     key:'forsvar-sakerhet', label:'Omvärld & Säkerhet',
     icon:`<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2L3 5v4c0 3.5 2.5 6.5 6 7.5 3.5-1 6-4 6-7.5V5L9 2z" stroke="currentColor" stroke-width="1.3"/><path d="M6 9l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    subs:['Försvarsbudget','NATO','Palestinakonflikten','Ukrainakonflikten']
+    subs:[
+      'Försvarsbudget','NATO',
+      {group:'Afrika', items:['Afrikapolitik','Sudan','Somalia']},
+      {group:'Asien & Oceanien', items:['Kina','Afghanistan','Myanmar','Nordkorea']},
+      {group:'Europa', items:['Ukrainakonflikten','Ryssland','Vitryssland','Balkan']},
+      {group:'Mellanöstern', items:['Mellanösternpolitik','Gaza','Västbanken','Palestinakonflikten','Iran','Libanon','Syrien','Egypten','Hormuzsundet','Suezkanalen','Irak','Jemen','Saudiarabien']},
+      {group:'Nordamerika', items:['USA','Kanada']},
+      {group:'Sydamerika & Karibien', items:['Latinamerikapolitik','Venezuela','Kuba']},
+    ]
   },
   {
     key:'digital-politik', label:'Digital politik',
@@ -547,15 +563,36 @@ topics.forEach(t => {
   subcats.className = 'subcats';
   subcats.id = `subs-${t.key}`;
   t.subs.forEach(s => {
-    const row = document.createElement('div');
-    row.className = 'subcat-row';
-    const sb = document.createElement('button');
-    sb.className = 'subcat-btn';
-    sb.textContent = s;
-    sb.dataset.sub = s;
-    sb.addEventListener('click', e => { e.stopPropagation(); selectSub(s, t.key); });
-    row.appendChild(sb);
-    subcats.appendChild(row);
+    if (typeof s === 'string') {
+      const row = document.createElement('div');
+      row.className = 'subcat-row';
+      const sb = document.createElement('button');
+      sb.className = 'subcat-btn';
+      sb.textContent = s;
+      sb.dataset.sub = s;
+      sb.addEventListener('click', e => { e.stopPropagation(); selectSub(s, t.key); });
+      row.appendChild(sb);
+      subcats.appendChild(row);
+    } else if (s.group && s.items) {
+      const groupWrap = document.createElement('div');
+      groupWrap.className = 'subcat-group';
+      const groupHeader = document.createElement('div');
+      groupHeader.className = 'subcat-group-header';
+      groupHeader.textContent = s.group;
+      groupWrap.appendChild(groupHeader);
+      s.items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'subcat-row';
+        const sb = document.createElement('button');
+        sb.className = 'subcat-btn subcat-btn-indent';
+        sb.textContent = item;
+        sb.dataset.sub = item;
+        sb.addEventListener('click', e => { e.stopPropagation(); selectSub(item, t.key); });
+        row.appendChild(sb);
+        groupWrap.appendChild(row);
+      });
+      subcats.appendChild(groupWrap);
+    }
   });
   wrap.appendChild(btn);
   wrap.appendChild(subcats);
@@ -1888,14 +1925,18 @@ function renderDbResults() {
     const partyObj = parties.find(p => p.key===pk);
     if (!partyObj) return '';
 
+    // Beräkna overall baserat på de 5 senaste omröstningarna där partiet deltog
     let totalFor=0, totalAg=0, totalAb=0;
-    dbUnika.forEach(r => {
+    const recentVoted = dbUnika.filter(r => (roster[`${r.a}|${r.i}`]||[]).some(m => normParti(m.p)===pk));
+    const recentFive = recentVoted.slice(0, 5);
+    recentFive.forEach(r => {
       const rd = (roster[`${r.a}|${r.i}`]||[]).filter(m => normParti(m.p)===pk);
       rd.forEach(m => { const v=normRost(m.r); if(v==='for')totalFor++; else if(v==='against')totalAg++; else totalAb++; });
     });
     const total = totalFor+totalAg+totalAb;
     const {overall, pct} = stanceFromCounts(totalFor, totalAg, total);
     const pillClass = overall==='for'?'is-for':overall==='against'?'is-against':'is-mixed';
+    const recentCount = recentFive.length;
     const pillLabel = overall==='for'?'Partiet är för':overall==='against'?'Partiet är emot':'Oklar ståndpunkt';
 
     const rows = dbUnika.map(r => {
@@ -1939,8 +1980,9 @@ function renderDbResults() {
         <div class="card-body" style="padding-bottom:0;">
           <div class="section-label">Vad säger partiet?</div>
           <div class="stance-summary">
-            <span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel} <span style="font-size:.72rem;opacity:.8;">(${pct}%)</span></span>
+            <span class="stance-pill ${pillClass}" title="Baseras på de ${recentCount} senaste omröstningarna"><span class="stance-dot"></span>${pillLabel} <span style="font-size:.72rem;opacity:.8;">(${pct}%)</span></span>
           </div>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:-2px;margin-bottom:4px;">Baseras på ${recentCount} senaste omröstning${recentCount===1?'':'ar'}</div>
           <div class="divider" style="margin-bottom:0;"></div>
           <div class="section-label" style="text-align:center;font-weight:700;font-size:.68rem;margin-bottom:8px;">Rösthistorik</div>
         </div>
