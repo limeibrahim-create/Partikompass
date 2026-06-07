@@ -1774,6 +1774,14 @@ async function runDbSearch() {
   renderDbResults();
 }
 
+// Global highlight function - uses current dbCurrentQuery
+function highlight(text) {
+  if (!text || !dbCurrentQuery) return text || '';
+  const escaped = dbCurrentQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escaped})`, 'gi');
+  return text.replace(regex, '<span class="search-highlight">$1</span>');
+}
+
 function renderDbResults() {
   if (!dbActive || !dbUnika.length) {
     if (dbActive) document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Inga omröstningar hittades.</p></div>`;
@@ -1789,14 +1797,6 @@ function renderDbResults() {
   const query = dbCurrentQuery;
 
   // Highlight search term in text
-  function highlight(text) {
-    if (!text || !query) return text || '';
-    // Word-boundary match for short terms like "AI"
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    return text.replace(regex, '<span class="search-highlight">$1</span>');
-  }
-
   const cols = partiesToShow.map((pk, pkIdx) => {
     const partyObj = parties.find(p => p.key===pk);
     if (!partyObj) return '';
