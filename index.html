@@ -223,15 +223,35 @@
   .db-search-clear { padding:9px 10px; background:none; border:1px solid var(--border); border-radius:6px; color:var(--muted); font-size:.82rem; cursor:pointer; flex-shrink:0; transition:all .14s; display:none; }
   .db-search-clear.on { display:block; }
   .db-search-clear:hover { border-color:var(--danger); color:var(--danger); }
-  .db-status { font-size:.68rem; color:var(--muted); margin-top:5px; min-height:12px; }
-  .db-status.ready { color:#4ee86a; }
-  .db-status.loading { color:var(--accent); }
 
-  /* Dim topics in search mode */
-  .topics-list.search-mode { opacity:.6; pointer-events:none; transition:opacity .25s; }
+  /* Dim topics in search mode — but still clickable */
+  .topics-list.search-mode { opacity:.6; transition:opacity .25s; }
 
-  /* ─── UPDATED CARD STYLES ────────────────────────────────────────────────── */
-  /* Vote period header — centered, bold, bigger, above line */
+  /* ─── VOTE ROW IN DB SEARCH ──────────────────────────────────────────────── */
+  .db-vote-row {
+    display:flex; flex-direction:column; gap:3px;
+    padding:5px 6px; margin:0 -6px 6px -6px;
+    border-radius:5px; cursor:pointer; transition:background .14s;
+    min-height:52px; /* ensures empty rows have same height */
+  }
+  .db-vote-row:hover { background:var(--surface2); }
+  .db-vote-row.active { background:rgba(218,119,86,.12); outline:1px solid rgba(218,119,86,.3); }
+  .db-vote-row.empty { cursor:default; opacity:.25; }
+  .db-vote-row.empty:hover { background:none; }
+  .db-vote-meta { font-size:.62rem; color:var(--accent); font-weight:600; margin-bottom:1px; }
+  .db-vote-title { font-size:.78rem; color:var(--text); line-height:1.4; margin-bottom:3px; }
+  .db-vote-counts { font-size:.68rem; color:var(--muted); margin-top:2px; }
+
+  /* ─── CARD REMOVE BUTTON ─────────────────────────────────────────────────── */
+  .card-remove-btn {
+    position:absolute; top:10px; right:10px;
+    background:none; border:none; color:var(--muted); font-size:.75rem;
+    cursor:pointer; opacity:.6; transition:opacity .15s; line-height:1; padding:2px 4px;
+  }
+  .card-remove-btn:hover { opacity:1; color:var(--danger); }
+  .result-card { position:relative; }
+
+  /* ─── VOTE PERIOD HEADER ─────────────────────────────────────────────────── */
   .vote-period-header {
     font-size:.67rem; color:var(--accent); letter-spacing:.1em; text-transform:uppercase;
     padding:0 0 5px 0; margin-bottom:5px; margin-top:8px;
@@ -240,8 +260,11 @@
   }
   .vote-period-group:first-child .vote-period-header { margin-top:0; }
 
-  /* Stance pill — computed from votes */
-  .stance-percent { font-size:.72rem; opacity:.8; margin-left:4px; }
+  /* ─── MEMBER LIST HEIGHT ─────────────────────────────────────────────────── */
+  .detail-members-list { max-height:390px; } /* 30% more than 300px */
+
+  /* ─── SCROLL BEHAVIOUR ───────────────────────────────────────────────────── */
+  .event-detail-panel, .controls-col, .results-col { overscroll-behavior:contain; }
 
   @media(max-width:900px){
     .right-panel{flex-direction:column;}
@@ -287,7 +310,6 @@
           <button class="db-search-btn" onclick="runDbSearch()">Sök</button>
           <button class="db-search-clear" id="dbClear" onclick="clearDbSearch()">✕</button>
         </div>
-        <div class="db-status" id="dbStatus"></div>
       </div>
 
       <div class="step-row">
@@ -446,6 +468,8 @@ function toggleParty(key) {
   document.getElementById('clearPartiesBtn')?.classList.toggle('visible', selectedParties.size > 0);
   renderSelectedStrip();
   updateBtn();
+  // If DB search is active, re-render results with updated parties
+  if (dbActive) renderDbResults();
 }
 
 function clearParties() {
@@ -512,7 +536,7 @@ function selectTopic(key) {
 }
 
 function selectSub(sub, topicKey) {
-  clearDbSearch(true); // clear search silently when picking a topic
+  clearDbSearch(true); // clear search, show topic instead
   selectedSub = selectedSub === sub ? null : sub;
   document.querySelectorAll('.subcat-btn').forEach(b => b.classList.toggle('selected', b.dataset.sub === selectedSub));
   document.getElementById('clearTopicBtn')?.classList.toggle('visible', !!(selectedTopic || selectedSub));
@@ -610,6 +634,7 @@ function renderCard(data) {
   const computedOverall = computeOverall(data.stanceMap, data.party);
   const pillClass = computedOverall==='for' ? 'is-for' : computedOverall==='against' ? 'is-against' : 'is-mixed';
   const pillLabel = computedOverall==='for' ? 'Partiet är för' : computedOverall==='against' ? 'Partiet är emot' : 'Partiets ståndpunkt är oklar';
+
   const voteRows = schema.map(period => {
     const maxSeats = Math.max(...[...selectedParties].map(pk => partySeats[pk]?.[period.period] || 0), partySeats[data.party]?.[period.period] || 0);
     const header = `<div class="vote-period-header">Mandatperiod ${period.period}</div>`;
@@ -1620,18 +1645,10 @@ const mockData = {
 };
 
 // ─── JSON-LADDNING ────────────────────────────────────────────────────────────
-let pkData = null, pkReady = false;
-
-function setStatus(msg, cls) {
-  const el = document.getElementById('dbStatus');
-  if (!el) return;
-  el.textContent = msg;
-  el.className = 'db-status' + (cls ? ' ' + cls : '');
-}
+let pkData = null, pkReady = false, dbActive = false, dbCurrentQuery = '';
 
 async function loadPkData() {
   if (pkData) return pkData;
-  setStatus('Laddar databas…', 'loading');
   try {
     const resp = await fetch('partikompass.json.gz');
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1642,25 +1659,22 @@ async function loadPkData() {
     const reader = ds.readable.getReader();
     const chunks = [];
     while (true) { const {value, done} = await reader.read(); if (done) break; if (value) chunks.push(value); }
-    const total = chunks.reduce((a,b) => a + b.length, 0);
+    const total = chunks.reduce((a,b) => a+b.length, 0);
     const merged = new Uint8Array(total);
     let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }
     pkData = JSON.parse(new TextDecoder().decode(merged));
-    pkReady = true;
-    setStatus('✓ Databas redo', 'ready');
   } catch(e) {
     console.warn('partikompass.json.gz:', e);
     pkData = {sammanfattning:[], roster:{}, hardkodade_amnen:{}};
-    pkReady = true;
-    setStatus('');
   }
+  pkReady = true;
   const ov = document.getElementById('pkOverlay');
   if (ov) { ov.classList.add('fade'); setTimeout(() => ov.classList.add('gone'), 420); }
   return pkData;
 }
 loadPkData();
 
-// ─── HJÄLPFUNKTIONER ──────────────────────────────────────────────────────────
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 function normParti(p) {
   if (!p) return '';
   const m = {'M':'M','S':'S','V':'V','SD':'SD','C':'C','KD':'KD','L':'L','MP':'MP',
@@ -1676,103 +1690,111 @@ function normRost(r) {
   if (v==='nej'||v==='no'||v==='emot'||v==='against') return 'against';
   return 'abstain';
 }
-function computeStanceFromVotes(forC, againstC, total) {
-  if (total === 0) return {overall:'mixed', pct:0};
-  const forPct = forC / total * 100;
-  const againstPct = againstC / total * 100;
-  if (forPct >= 70) return {overall:'for', pct:Math.round(forPct)};
-  if (againstPct >= 70) return {overall:'against', pct:Math.round(againstPct)};
-  return {overall:'mixed', pct:Math.round(Math.max(forPct, againstPct))};
+function stanceFromCounts(forC, agC, total) {
+  if (total===0) return {overall:'mixed', pct:0};
+  const fp = forC/total*100, ap = agC/total*100;
+  if (fp>=70) return {overall:'for', pct:Math.round(fp)};
+  if (ap>=70) return {overall:'against', pct:Math.round(ap)};
+  return {overall:'mixed', pct:Math.round(Math.max(fp,ap))};
+}
+function pctStr(c, total) {
+  if (total===0) return '0%';
+  return Math.round(c/total*100) + '%';
 }
 
 // ─── DATABASSÖKNING ───────────────────────────────────────────────────────────
-let dbActive = false;
+let dbUnika = []; // cache of current search results
 
 async function runDbSearch() {
   const query = document.getElementById('dbInput').value.trim().toLowerCase();
   if (!query) return;
-  if (selectedParties.size === 0) { triggerShake(document.getElementById('partyListContainer')); return; }
-
-  if (!pkReady) { setStatus('Väntar på databas…', 'loading'); while (!pkReady) await new Promise(r => setTimeout(r, 80)); }
+  if (selectedParties.size===0) { triggerShake(document.getElementById('partyListContainer')); return; }
+  if (!pkReady) { while (!pkReady) await new Promise(r => setTimeout(r, 80)); }
 
   dbActive = true;
-  document.getElementById('topicList').classList.add('search-mode');
+  dbCurrentQuery = query;
   document.getElementById('dbClear').classList.add('on');
-  // Clear topic selection
-  selectedTopic = null; selectedSub = null;
-  document.querySelectorAll('.topic-btn').forEach(b => b.classList.remove('selected'));
-  document.querySelectorAll('.subcats').forEach(s => s.classList.remove('open'));
-  document.querySelectorAll('.subcat-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('topicList').classList.add('search-mode');
 
+  // Find unique omröstningar matching query
   const sammanfattning = pkData.sammanfattning || [];
-  const roster = pkData.roster || {};
-
-  // Hitta unika omröstningar, en per ID (senaste år)
   const traffar = sammanfattning.filter(r => ((r.t||'')+(r.b||'')).toLowerCase().includes(query));
   traffar.sort((a,b) => b.a.localeCompare(a.a));
   const sedda = new Set();
-  const unika = traffar.filter(r => { if (sedda.has(r.i)) return false; sedda.add(r.i); return true; });
+  dbUnika = traffar.filter(r => { if (sedda.has(r.i)) return false; sedda.add(r.i); return true; });
 
-  const resultsEl = document.getElementById('results');
-  if (unika.length === 0) {
-    resultsEl.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Inga omröstningar hittades för "<strong>${query}</strong>".</p></div>`;
+  renderDbResults();
+}
+
+function renderDbResults() {
+  if (!dbActive || !dbUnika.length) {
+    if (dbActive) {
+      document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Inga omröstningar hittades.</p></div>`;
+    }
+    return;
+  }
+  if (selectedParties.size===0) {
+    document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>${dbUnika.length} omröstningar hittades.<br>Välj ett parti för att se resultaten.</p></div>`;
     return;
   }
 
-  // Ett kort per valt parti med alla omröstningar under
+  const roster = pkData.roster || {};
   const partiesToShow = [...selectedParties];
+
+  // Build one card per party, rows aligned across parties
   const cols = partiesToShow.map(pk => {
-    const partyObj = parties.find(p => p.key === pk);
+    const partyObj = parties.find(p => p.key===pk);
     if (!partyObj) return '';
 
-    // Beräkna total stance för hela sökningen
-    let totalFor = 0, totalAgainst = 0, totalAbstain = 0;
-    unika.forEach(r => {
-      const key = `${r.a}|${r.i}`;
-      const rd = (roster[key]||[]).filter(m => normParti(m.p) === pk);
-      rd.forEach(m => {
-        const v = normRost(m.r);
-        if (v==='for') totalFor++;
-        else if (v==='against') totalAgainst++;
-        else totalAbstain++;
-      });
+    // Overall stance across all results
+    let totalFor=0, totalAg=0, totalAb=0;
+    dbUnika.forEach(r => {
+      const rd = (roster[`${r.a}|${r.i}`]||[]).filter(m => normParti(m.p)===pk);
+      rd.forEach(m => { const v=normRost(m.r); if(v==='for')totalFor++; else if(v==='against')totalAg++; else totalAb++; });
     });
-    const total = totalFor + totalAgainst + totalAbstain;
-    const {overall, pct} = computeStanceFromVotes(totalFor, totalAgainst, total);
+    const total = totalFor+totalAg+totalAb;
+    const {overall, pct} = stanceFromCounts(totalFor, totalAg, total);
     const pillClass = overall==='for'?'is-for':overall==='against'?'is-against':'is-mixed';
     const pillLabel = overall==='for'?'Partiet är för':overall==='against'?'Partiet är emot':'Oklar ståndpunkt';
 
-    // Röstningsrader
-    const rows = unika.map(r => {
+    // Rows — one per omröstning, aligned
+    const rows = dbUnika.map(r => {
       const key = `${r.a}|${r.i}`;
-      const rd = (roster[key]||[]).filter(m => normParti(m.p) === pk);
+      const rd = (roster[key]||[]).filter(m => normParti(m.p)===pk);
       const forC = rd.filter(m => normRost(m.r)==='for').length;
       const agC  = rd.filter(m => normRost(m.r)==='against').length;
       const abC  = rd.filter(m => normRost(m.r)==='abstain').length;
+      const rowTotal = forC+agC+abC;
+      const safeKey = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeTitle = (r.t||r.i).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+      if (rd.length===0) {
+        // Empty row — same height, no data
+        return `<div class="db-vote-row empty"><div class="db-vote-meta">${r.a} · ${r.i}</div><div class="db-vote-title" style="color:var(--muted);font-style:italic;">Ingen röstdata</div></div>`;
+      }
 
       const lamps = rd.slice(0,90).map(m => `<span class="lamp ${normRost(m.r)}"></span>`).join('');
-      const lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps||'<span class="lamp unknown"></span>'}</div>`;
-      const safeKey = key.replace(/'/g,"\\'");
-      const safeTitle = (r.t||r.i).replace(/'/g,"\\'").substring(0,50);
+      const lampsHtml = `<div class="vote-lamps" style="grid-template-columns:repeat(10,7px)">${lamps}</div>`;
 
-      return `<div style="margin-bottom:4px;">
-        <div style="font-size:.56rem;color:var(--muted);margin-bottom:2px;padding-left:2px;">${r.a}</div>
-        <div class="vote-row vote-item clickable-vote" onclick="showDbDetail('${safeKey}','${pk}','${safeTitle}')" title="Klicka för mer info">
-          ${lampsHtml}
-          <span class="vote-text">${r.t ? r.t.substring(0,45) : r.i}${forC+agC+abC>0?` — ${forC} för, ${agC} emot`:''}</span>
-        </div>
+      return `<div class="db-vote-row" onclick="showDbDetail('${safeKey}','${pk}','${safeTitle}')">
+        <div class="db-vote-meta">${r.a} · ${r.i}</div>
+        <div class="db-vote-title">${r.t || r.i}</div>
+        ${lampsHtml}
+        <div class="db-vote-counts">${forC} (${pctStr(forC,rowTotal)}) för · ${agC} (${pctStr(agC,rowTotal)}) emot · ${abC} frånv.</div>
       </div>`;
     }).join('');
 
+    const safeKey2 = pk.replace(/'/g,"\\'");
     return `<div class="result-card">
+      <button class="card-remove-btn" onclick="removePartyFromResults('${safeKey2}')" title="Ta bort">✕</button>
       <div class="card-header">
         <div class="party-badge" style="background:${partyObj.bg};color:${partyObj.fg};">${pk}</div>
-        <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${unika.length} omröstningar</div></div>
+        <div><div class="card-title">${partyObj.name}</div><div class="card-topic">${dbUnika.length} omröstningar</div></div>
       </div>
       <div class="card-body">
         <div class="section-label">Vad säger partiet?</div>
         <div class="stance-summary">
-          <span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel}<span class="stance-percent">(${pct}%)</span></span>
+          <span class="stance-pill ${pillClass}"><span class="stance-dot"></span>${pillLabel} <span style="font-size:.72rem;opacity:.8;">(${pct}%)</span></span>
         </div>
         <div class="divider"></div>
         <div class="section-label" style="text-align:center;font-weight:700;font-size:.68rem;">Rösthistorik</div>
@@ -1781,16 +1803,24 @@ async function runDbSearch() {
     </div>`;
   }).join('');
 
+  const resultsEl = document.getElementById('results');
   resultsEl.innerHTML = `<div class="results-columns">${cols}</div>`;
-  document.querySelectorAll('.result-card').forEach((el,i) => { el.style.animationDelay = `${i*80}ms`; });
+  document.querySelectorAll('.result-card').forEach((el,i) => { el.style.animationDelay=`${i*60}ms`; });
+}
+
+function removePartyFromResults(pk) {
+  selectedParties.delete(pk);
+  document.querySelectorAll('.party-btn').forEach(b => b.classList.toggle('selected', selectedParties.has(b.dataset.key)));
+  document.getElementById('clearPartiesBtn')?.classList.toggle('visible', selectedParties.size>0);
+  renderSelectedStrip();
+  updateBtn();
+  renderDbResults();
 }
 
 function showDbDetail(key, partyKey, titel) {
-  document.querySelectorAll('.clickable-vote').forEach(el => {
-    const attr = el.getAttribute('onclick')||'';
-    el.classList.toggle('active', attr.includes(`'${key}'`));
+  document.querySelectorAll('.db-vote-row').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('onclick')?.includes(`'${key}'`)||false);
   });
-
   const [yearStr, idStr] = key.split('|');
   const sammRad = (pkData?.sammanfattning||[]).find(r => r.a===yearStr && r.i===idStr);
   const rosterData = (pkData?.roster||{})[key]||[];
@@ -1822,7 +1852,6 @@ function showDbMembers(key, partyKey) {
   const partyRoster = rosterData.filter(m => normParti(m.p)===partyKey);
   const partyObj = parties.find(p => p.key===partyKey);
   const [yearStr] = key.split('|');
-
   document.getElementById('detailMembersHeader').textContent = `${partyObj?.name||partyKey} — ${yearStr}`;
   document.getElementById('detailMembersList').innerHTML = partyRoster.map(m => {
     const v = normRost(m.r);
@@ -1833,18 +1862,18 @@ function showDbMembers(key, partyKey) {
       <span style="display:flex;align-items:center;gap:5px;color:${color};font-size:.7rem;">${label}<span class="member-lamp ${v}"></span></span>
     </div>`;
   }).join('');
-  document.getElementById('detailMembersSection').style.display = 'block';
+  document.getElementById('detailMembersSection').style.display='block';
 }
 
 function clearDbSearch(silent) {
-  dbActive = false;
+  dbActive = false; dbCurrentQuery = ''; dbUnika = [];
+  document.getElementById('dbClear').classList.remove('on');
+  document.getElementById('topicList').classList.remove('search-mode');
   if (!silent) {
     document.getElementById('dbInput').value = '';
     document.getElementById('results').innerHTML = `<div class="empty-state"><div class="icon">🧭</div><p>Välj ett eller flera partier och ett ämne<br>för att jämföra ståndpunkter sida vid sida.</p></div>`;
     closeEventDetail();
   }
-  document.getElementById('dbClear').classList.remove('on');
-  document.getElementById('topicList').classList.remove('search-mode');
 }
 
 async function fetchPartyStance(partyKey, sub) {
